@@ -44,3 +44,8 @@ Esta beta trabaja con SQLite local y modo offline-first. Incluye módulos para i
 - La autenticación de esta etapa protege las cuentas locales de la instalación. Cuando exista el backend, la identidad y los permisos deberán validarse también en el servidor; una app móvil local no puede ser la autoridad final frente a un dispositivo comprometido o una APK modificada.
 
 Los datos de demostración se incluyen para explorar operaciones locales. Retíralos desde Configuración antes de registrar información real.
+
+
+### Validación de la rama
+
+La verificación de esta etapa se ejecuta en GitHub Actions: resolución de dependencias, análisis estático, pruebas automatizadas y compilación de APK debug. La APK solo se considera lista para prueba cuando los cuatro pasos terminan correctamente.
