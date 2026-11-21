@@ -46,11 +46,11 @@ class _UsersPageState extends State<UsersPage> {
       builder: (ctx) => AlertDialog(
         title: Text('Restablecer contraseña de @${user['username']}'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: controller, obscureText: true, decoration: const InputDecoration(labelText: 'Nueva contraseña')),
+          TextField(controller: controller, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)], obscureText: true, decoration: const InputDecoration(labelText: 'Nuevo PIN de 6 dígitos')),
           const SizedBox(height: 10),
-          TextField(controller: confirm, obscureText: true, decoration: const InputDecoration(labelText: 'Confirmar contraseña')),
+          TextField(controller: confirm, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)], obscureText: true, decoration: const InputDecoration(labelText: 'Confirmar PIN')),
           const SizedBox(height: 8),
-          const Text('Mínimo 10 caracteres, mayúscula, minúscula y número.', style: TextStyle(fontSize: 10)),
+          const Text('El PIN debe tener exactamente 6 números.', style: TextStyle(fontSize: 10)),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
@@ -170,7 +170,7 @@ class _UserDialogState extends State<UserDialog> {
       const SizedBox(height: 8),
       _field(name, 'Nombre visible', required: true),
       const SizedBox(height: 8),
-      TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Contraseña inicial')),
+      TextField(controller: password, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)], obscureText: true, decoration: const InputDecoration(labelText: 'PIN inicial de 6 dígitos')),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
         value: role,
@@ -179,7 +179,7 @@ class _UserDialogState extends State<UserDialog> {
         onChanged: (v) => setState(() => role = v ?? role),
       ),
       const SizedBox(height: 8),
-      const Text('Mínimo 10 caracteres, con mayúscula, minúscula y número.', style: TextStyle(fontSize: 10)),
+      const Text('El PIN debe tener exactamente 6 números.', style: TextStyle(fontSize: 10)),
     ])),
     actions: [
       TextButton(onPressed: busy ? null : () => Navigator.pop(context, false), child: const Text('Cancelar')),
