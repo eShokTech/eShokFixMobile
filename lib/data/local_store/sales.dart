@@ -12,11 +12,12 @@ extension LocalStoreSalesOperations on LocalStore {
     'purchase_returns', where: 'purchase_id=?', whereArgs: [purchaseId], orderBy: 'id DESC'); }
   Future<void> createSale({int? itemId, required String description, required double quantity, required double unitPrice, required String paymentMethod, double discount = 0, String notes = ''}) async {
     requirePermission('sales.manage');
-    requirePermission('purchases.view');
-    requirePermission('purchases.view');
-    requirePermission('sales.view');
-    requirePermission('sales.view');
-    requirePermission('sales.view');
+    
+    
+    
+    
+    
+    
 
 
 
@@ -34,7 +35,7 @@ extension LocalStoreSalesOperations on LocalStore {
 
   Future<List<Map<String, Object?>>> saleItems(int saleId) { requirePermission('sales.view'); return db.query('sale_items', where: 'sale_id=?', whereArgs: [saleId], orderBy: 'id'); }
 
-  Future<int> createSaleCart({
+  Future<int> createSaleCart({ requirePermission('sales.manage');
     int? clientId,
     required List<Map<String, Object?>> items,
     required String paymentMethod,
@@ -42,8 +43,8 @@ extension LocalStoreSalesOperations on LocalStore {
     List<Map<String, Object?>>? paymentBreakdown,
     String notes = '',
   }) async {
-    requirePermission('sales.manage');
-    requirePermission('sales.view');
+    
+    
 
 
     if (items.isEmpty) throw ArgumentError('Agrega al menos un producto o servicio.');
@@ -173,14 +174,14 @@ extension LocalStoreSalesOperations on LocalStore {
     });
   }
 
-  Future<void> returnSaleItem({
+  Future<void> returnSaleItem({ requirePermission('sales.manage');
     required int saleId,
     required int saleItemId,
     required double quantity,
     required String refundMethod,
     required String reason,
   }) async {
-    requirePermission('sales.manage');
+    
 
     if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad a devolver debe ser mayor a cero.');
     if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de la devolución.');
@@ -267,10 +268,10 @@ extension LocalStoreSalesOperations on LocalStore {
     });
   }
 
-  Future<void> cancelSale(int saleId, {
+  Future<void> cancelSale(int saleId, { requirePermission('sales.manage');
     required String refundMethod, required String reason,
   }) async {
-    requirePermission('sales.manage');
+    
 
     if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de cancelación.');
     final method = refundMethod.trim().toUpperCase();
