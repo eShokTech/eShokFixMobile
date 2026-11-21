@@ -329,6 +329,21 @@ void main() {
     ));
     expect(await store.clients(), isA<List<Map<String, Object?>>>());
     expect(await store.inventory(), isA<List<Map<String, Object?>>>());
+    final clientId = await store.saveClient(name: 'Cliente técnico');
+    await expectLater(
+      store.createOrder(
+        clientId: clientId,
+        brand: 'Samsung',
+        model: 'A26',
+        failure: 'No carga',
+        condition: 'Sin golpes',
+        accessories: 'Equipo',
+        technician: 'Técnico',
+        labor: 300,
+        deposit: 100,
+      ),
+      throwsA(isA<StateError>()),
+    );
     await expectLater(
       store.saveInventoryItem(name: 'No autorizado', stock: 1),
       throwsA(isA<StateError>()),
