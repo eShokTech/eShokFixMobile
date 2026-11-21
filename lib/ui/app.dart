@@ -23,6 +23,7 @@ part 'modules/finance_ui.dart';
 part 'modules/admin_ui.dart';
 part 'modules/purchases_ui.dart';
 part 'modules/orders_part_ui.dart';
+part 'modules/search_notifications_ui.dart';
 
 
 String _str(Object? v, [String fallback = '']) => v == null ? fallback : '$v';
@@ -50,6 +51,27 @@ class EShokFixShell extends StatefulWidget {
 
 class _EShokFixShellState extends State<EShokFixShell> {
   String _view = 'inicio';
+  late Future<int> _notificationCountFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationCountFuture = _loadNotificationCount();
+  }
+
+  Future<int> _loadNotificationCount() async {
+    try {
+      await widget.store.refreshOperationalNotifications();
+      return await widget.store.unreadNotificationCount();
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  void _refreshNotificationCount() {
+    if (!mounted) return;
+    setState(() => _notificationCountFuture = _loadNotificationCount());
+  }
   bool _canOpen(String view) {
     final permission = switch (view) {
       'inicio' => 'dashboard.view',
@@ -64,6 +86,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'usuarios' => 'users.manage',
       'configuracion' => 'settings.view',
       'whatsapp' || 'licencias' => 'settings.read',
+      'busqueda' || 'notificaciones' => 'dashboard.view',
       _ => 'dashboard.view',
     };
     return AuthService.can(widget.authUser.role, permission);
@@ -87,6 +110,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
     'caja' => 'Caja y cortes', 'garantias' => 'Garantías', 'reportes' => 'Reportes',
     'usuarios' => 'Usuarios y permisos', 'configuracion' => 'Configuración',
     'whatsapp' => 'Eventos WhatsApp', 'licencias' => 'Licenciamiento', 'compras' => 'Compras y proveedores',
+    'busqueda' => 'Búsqueda global', 'notificaciones' => 'Notificaciones',
     _ => 'eShokFix',
   };
 
@@ -106,6 +130,12 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'whatsapp' => WhatsAppEventsPage(store: widget.store),
       'licencias' => const LicensePage(),
       'compras' => PurchasesPage(store: widget.store),
+      'busqueda' => GlobalSearchPage(store: widget.store, open: _open),
+      'notificaciones' => NotificationsPage(
+        store: widget.store,
+        open: _open,
+        onChanged: _refreshNotificationCount,
+      ),
       _ => MorePage(open: _open, role: widget.authUser.role),
     };
     return Scaffold(
@@ -115,6 +145,26 @@ class _EShokFixShellState extends State<EShokFixShell> {
           const Text('eShokFix  ·  OPERACIÓN DEL TALLER', style: TextStyle(fontSize: 9, letterSpacing: 1.25, color: Color(0xFF8C819A), fontWeight: FontWeight.w700)),
         ]),
         actions: [
+          IconButton(
+            tooltip: 'Búsqueda global',
+            onPressed: () => _open('busqueda'),
+            icon: const Icon(Icons.search, color: eShokPurple),
+          ),
+          FutureBuilder<int>(
+            future: _notificationCountFuture,
+            builder: (context, snapshot) {
+              final count = snapshot.data ?? 0;
+              return IconButton(
+                tooltip: count > 0 ? '$count notificaciones pendientes' : 'Notificaciones',
+                onPressed: () => _open('notificaciones'),
+                icon: Badge(
+                  isLabelVisible: count > 0,
+                  label: Text(count > 99 ? '99+' : '$count'),
+                  child: const Icon(Icons.notifications_outlined, color: eShokPurple),
+                ),
+              );
+            },
+          ),
           IconButton(
             tooltip: 'Modo local sin servidor conectado',
             onPressed: () => _showInfo(context, 'Modo local', 'Los datos y operaciones de esta beta se guardan en el teléfono. La conexión con el futuro servidor propio y el licenciamiento todavía no están implementados.'),
@@ -350,6 +400,10 @@ class MorePage extends StatelessWidget {
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
       children: [
+        if (AuthService.can(role, 'dashboard.view')) ...[
+          _moduleTile(context, 'Búsqueda global', 'Clientes, folios, equipos y productos', Icons.search, 'busqueda', open),
+          _moduleTile(context, 'Notificaciones', 'Pendientes y alertas del taller', Icons.notifications_outlined, 'notificaciones', open),
+        ],
         if (AuthService.can(role, 'inventory.view'))
           _moduleTile(context, 'Inventario', 'Productos y existencias', Icons.inventory_2_outlined, 'inventario', open),
         if (AuthService.can(role, 'purchases.view'))
