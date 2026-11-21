@@ -9,7 +9,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_svg: ^2.2.3
   cupertino_icons: ^1.0.8
   crypto: ^3.0.7
   flutter_secure_storage: ^9.2.4
@@ -30,4 +29,4 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/branding/eshokfix_logo.svg
+    - assets/branding/eshokfix_logo.png
