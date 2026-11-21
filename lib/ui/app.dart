@@ -1283,8 +1283,6 @@ class _SaleDetailDialogState extends State<SaleDetailDialog> {
     _items = widget.store.saleItems(widget.sale['id'] as int);
   }
 
-  void _refreshItems() => _items = widget.store.saleItems(widget.sale['id'] as int);
-
   Future<void> _returnLine(Map<String, Object?> line) async {
     final remaining = FinancialRules.remainingQuantity(
       _num(line['quantity']), _num(line['returned_quantity']),
