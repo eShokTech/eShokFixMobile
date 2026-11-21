@@ -1,6 +1,7 @@
 part of '../local_store.dart';
 
-extension LocalStorePurchaseReceivingOperations on LocalStore {  Future<void> receivePurchaseItem(
+extension LocalStorePurchaseReceivingOperations on LocalStore {
+  Future<void> receivePurchaseItem(
     int purchaseId,
     int purchaseItemId,
     double quantity,
