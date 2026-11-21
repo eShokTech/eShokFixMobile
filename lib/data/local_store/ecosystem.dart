@@ -95,7 +95,7 @@ extension LocalStoreEcosystemOperations on LocalStore {
       await append('''
         SELECT 'COMPRA' type, p.id target_id, 'compras' target_view,
                p.folio title, s.name || ' · Saldo ' ||
-                 printf('$%.2f', MAX(0, p.total-p.paid)) subtitle,
+                 printf('\$%.2f', MAX(0, p.total-p.paid)) subtitle,
                p.created_at sort_date
         FROM purchases p JOIN suppliers s ON s.id=p.supplier_id
         WHERE p.folio LIKE ? OR s.name LIKE ? COLLATE NOCASE
@@ -229,7 +229,7 @@ extension LocalStoreEcosystemOperations on LocalStore {
             severity=excluded.severity, resolved_at=NULL
         ''', [
           'PURCHASE_BALANCE:$id', 'PURCHASE_BALANCE', 'Compra con saldo pendiente',
-          'La compra ${row['folio']} de ${row['supplier_name']} tiene un saldo de $${balance.toStringAsFixed(2)}.',
+          'La compra ${row['folio']} de ${row['supplier_name']} tiene un saldo de \${balance.toStringAsFixed(2)}.',
           'INFO', 'compras', id, 'purchases.view', now,
         ]);
       }
