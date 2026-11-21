@@ -100,7 +100,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'caja' => CashPage(store: widget.store),
       'garantias' => WarrantiesPage(store: widget.store),
       'reportes' => ReportsPage(store: widget.store),
-      'usuarios' => UsersPage(store: widget.store),
+      'usuarios' => UsersPage(store: widget.store, currentUser: widget.authUser),
       'configuracion' => SettingsPage(store: widget.store, open: _open),
       'whatsapp' => WhatsAppEventsPage(store: widget.store),
       'licencias' => const LicensePage(),
