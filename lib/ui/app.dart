@@ -2042,7 +2042,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
                           child: Icon(Icons.inventory_2_outlined, color: Color(0xFF258A62)),
                         ),
                         title: Text(_str(row['folio']), style: const TextStyle(fontWeight: FontWeight.w900)),
-                        subtitle: Text('${_str(row['supplier_name'])} · ${_date(row['created_at'])}\n${_str(row['payment_status'])} · Saldo ${_money(balance)}'),
+                        subtitle: Text('${_str(row['supplier_name'])} · ${_date(row['created_at'])}\n${_str(row['status'])} · ${_str(row['payment_status'])} · Saldo ${_money(balance)}'),
                         isThreeLine: true,
                         trailing: Text(_money(row['total']), style: const TextStyle(fontWeight: FontWeight.w900)),
                         onTap: () => _openPurchase(row),
@@ -2470,7 +2470,7 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
 
   Future<void> _returnLine(Map<String, Object?> line) async {
     final remaining = FinancialRules.remainingQuantity(
-      _num(line['quantity']), _num(line['returned_quantity']),
+      _num(line['received_quantity']), _num(line['returned_quantity']),
     );
     if (remaining <= 0) return;
     final qty = TextEditingController(text: remaining.toStringAsFixed(2));
@@ -2565,7 +2565,7 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
                 IconButton(
                   tooltip: 'Devolver al proveedor',
                   visualDensity: VisualDensity.compact,
-                  onPressed: _num(line['returned_quantity']) >= _num(line['quantity']) ? null : () => _returnLine(line),
+                  onPressed: _num(line['returned_quantity']) >= _num(line['received_quantity']) ? null : () => _returnLine(line),
                   icon: const Icon(Icons.assignment_return_outlined, color: eShokPurple),
                 ),
               ]),

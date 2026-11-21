@@ -291,6 +291,11 @@ class LocalStore {
     return _instance!;
   }
 
+  Future<void> close() async {
+    await db.close();
+    if (identical(_instance, this)) _instance = null;
+  }
+
   Future<String?> exportBackup() async {
     await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
     final root = await getDatabasesPath();
@@ -424,6 +429,7 @@ class LocalStore {
   }
 
   Future<int> saveClient({int? id, required String name, String phone = '', String whatsapp = '', String email = '', String address = '', String notes = ''}) async {
+    if (name.trim().isEmpty) throw ArgumentError('El nombre del cliente es obligatorio.');
     final now = _now();
     final data = {'name': name.trim(), 'phone': phone.trim(), 'whatsapp': whatsapp.trim(), 'email': email.trim(), 'address': address.trim(), 'notes': notes.trim(), 'updated_at': now};
     int clientId;
@@ -924,7 +930,9 @@ class LocalStore {
     String notes = '',
   }) async {
     if (items.isEmpty) throw ArgumentError('Agrega al menos un artículo a la compra.');
-    if (discount < 0 || paid < 0) throw ArgumentError('Descuento y pago no pueden ser negativos.');
+    if (![discount, paid].every((value) => value.isFinite) || discount < 0 || paid < 0) {
+      throw ArgumentError('Descuento y pago deben ser importes válidos no negativos.');
+    }
     final prepared = <Map<String, Object?>>[];
     var subtotal = 0.0;
     for (final line in items) {
@@ -936,10 +944,10 @@ class LocalStore {
       }
       final quantity = quantityValue.toDouble();
       final unitCost = costValue.toDouble();
-      if (quantity <= 0 || unitCost < 0) {
-        throw ArgumentError('La cantidad debe ser mayor a cero y el costo no puede ser negativo.');
+      if (!quantity.isFinite || !unitCost.isFinite || quantity <= 0 || unitCost < 0) {
+        throw ArgumentError('La cantidad debe ser mayor a cero y el costo debe ser un importe válido no negativo.');
       }
-      final lineTotal = PurchaseAccounting.lineTotal(quantity, unitCost);
+      final lineTotal = FinancialRules.money(PurchaseAccounting.lineTotal(quantity, unitCost));
       subtotal += lineTotal;
       prepared.add({
         'item_id': itemId,
@@ -948,8 +956,9 @@ class LocalStore {
         'line_total': lineTotal,
       });
     }
+    subtotal = FinancialRules.money(subtotal);
     if (discount > subtotal) throw ArgumentError('El descuento no puede superar el subtotal.');
-    final total = PurchaseAccounting.total(subtotal, discount);
+    final total = FinancialRules.money(PurchaseAccounting.total(subtotal, discount));
     if (paid > total) throw ArgumentError('El pago inicial no puede superar el total de la compra.');
     final tender = FinancialRules.normalizePayments(
       total: paid, fallbackMethod: paymentMethod, payments: paymentBreakdown,
@@ -1127,7 +1136,7 @@ class LocalStore {
     String notes = '',
   }) async {
     if (items.isEmpty) throw ArgumentError('Agrega al menos un producto o servicio.');
-    if (discount < 0) throw ArgumentError('El descuento no puede ser negativo.');
+    if (!discount.isFinite || discount < 0) throw ArgumentError('El descuento debe ser un importe válido no negativo.');
 
     final prepared = <Map<String, Object?>>[];
     var subtotal = 0.0;
@@ -1141,10 +1150,10 @@ class LocalStore {
       }
       final quantity = quantityValue.toDouble();
       final unitPrice = priceValue.toDouble();
-      if (quantity <= 0 || unitPrice < 0 || (itemId != null && itemId is! int)) {
+      if (!quantity.isFinite || !unitPrice.isFinite || quantity <= 0 || unitPrice < 0 || (itemId != null && itemId is! int)) {
         throw ArgumentError('Revisa la cantidad, precio y artículo de cada partida.');
       }
-      final lineTotal = quantity * unitPrice;
+      final lineTotal = FinancialRules.money(quantity * unitPrice);
       subtotal += lineTotal;
       prepared.add({
         'item_id': itemId,
@@ -1154,8 +1163,10 @@ class LocalStore {
         'line_total': lineTotal,
       });
     }
-    if (discount > subtotal) throw ArgumentError('El descuento no puede superar el subtotal.');
-    final total = (subtotal - discount).clamp(0.0, double.infinity).toDouble();
+    subtotal = FinancialRules.money(subtotal);
+    final normalizedDiscount = FinancialRules.money(discount);
+    if (normalizedDiscount > subtotal) throw ArgumentError('El descuento no puede superar el subtotal.');
+    final total = FinancialRules.money((subtotal - normalizedDiscount).clamp(0.0, double.infinity).toDouble());
     final tender = FinancialRules.normalizePayments(
       total: total, fallbackMethod: paymentMethod, payments: paymentBreakdown,
     );
@@ -1196,7 +1207,7 @@ class LocalStore {
         'folio': 'PENDING-${DateTime.now().microsecondsSinceEpoch}',
         'client_id': clientId,
         'subtotal': subtotal,
-        'discount': discount,
+        'discount': normalizedDiscount,
         'total': total,
         'payment_method': storedMethod,
         'amount_paid': total,
@@ -1242,7 +1253,7 @@ class LocalStore {
         'operation': 'CREATE',
         'payload': jsonEncode({
           'folio': folio, 'client_id': clientId, 'subtotal': subtotal,
-          'discount': discount, 'total': total, 'method': storedMethod,
+          'discount': normalizedDiscount, 'total': total, 'method': storedMethod,
           'payment_breakdown': tender, 'items': prepared,
         }),
         'created_at': now,
