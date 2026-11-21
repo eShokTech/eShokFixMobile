@@ -9,6 +9,8 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
   Future<int> saveInventoryItem({int? id, String sku = '', required String name, String category = 'General', double stock = 0, double minStock = 0, double cost = 0, double price = 0, String location = ''}) async {
     requirePermission('inventory.manage');
     requirePermission('inventory.view');
+
+
     if (name.trim().isEmpty) throw ArgumentError('El nombre del artículo es obligatorio.');
     if (![stock, minStock, cost, price].every((value) => value.isFinite) ||
         stock < 0 || minStock < 0 || cost < 0 || price < 0) {
@@ -73,6 +75,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
 
   Future<void> adjustInventory(int itemId, double quantity, String reason) async {
     requirePermission('inventory.manage');
+
     if (!quantity.isFinite) throw ArgumentError('La cantidad debe ser un número válido.');
     if (quantity == 0) return;
     if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo del movimiento.');
@@ -108,6 +111,8 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
   }) async {
     requirePermission('purchases.manage');
     requirePermission('purchases.view');
+
+
     if (name.trim().isEmpty) throw ArgumentError('El nombre del proveedor es obligatorio.');
     final now = _now();
     final data = {
@@ -142,6 +147,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
 
   Future<List<Map<String, Object?>>> purchases({String query = ''}) async {
     requirePermission('purchases.view');
+
     final q = '%${query.trim()}%';
     return db.rawQuery('''SELECT p.*, s.name supplier_name,
       (SELECT COUNT(*) FROM purchase_items pi WHERE pi.purchase_id=p.id) item_count
@@ -166,6 +172,8 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
   }) async {
     requirePermission('purchases.manage');
     requirePermission('purchases.view');
+
+
     if (items.isEmpty) throw ArgumentError('Agrega al menos un artículo a la compra.');
     if (![discount, paid].every((value) => value.isFinite) || discount < 0 || paid < 0) {
       throw ArgumentError('Descuento y pago deben ser importes válidos no negativos.');
@@ -305,6 +313,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
     List<Map<String, Object?>>? paymentBreakdown,
   }) async {
     requirePermission('purchases.manage');
+
     if (!amount.isFinite || amount <= 0) {
       throw ArgumentError('El pago debe ser mayor a cero y válido.');
     }
