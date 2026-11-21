@@ -1,30 +1,38 @@
 part of '../app.dart';
 
 class GlobalSearchPage extends StatefulWidget {
-  const GlobalSearchPage({super.key, required this.store, required this.open});
+  const GlobalSearchPage({
+    super.key,
+    required this.store,
+    required this.open,
+    required this.query,
+  });
   final LocalStore store;
   final ValueChanged<String> open;
+  final String query;
 
   @override
   State<GlobalSearchPage> createState() => _GlobalSearchPageState();
 }
 
 class _GlobalSearchPageState extends State<GlobalSearchPage> {
-  final _controller = TextEditingController();
   Future<List<Map<String, Object?>>> _results = Future.value([]);
-  String _query = '';
+  late String _query;
 
-  void _search(String value) {
-    setState(() {
-      _query = value.trim();
-      _results = widget.store.globalSearch(_query);
-    });
+  @override
+  void initState() {
+    super.initState();
+    _query = widget.query.trim();
+    _results = widget.store.globalSearch(_query);
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant GlobalSearchPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.query != widget.query) {
+      _query = widget.query.trim();
+      _results = widget.store.globalSearch(_query);
+    }
   }
 
   IconData _icon(String type) => switch (type) {
@@ -47,30 +55,13 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
         subtitle: 'Busca clientes, equipos, IMEI, órdenes, productos, compras y garantías',
       ),
       const SizedBox(height: 12),
-      TextField(
-        controller: _controller,
-        autofocus: true,
-        onChanged: _search,
-        textInputAction: TextInputAction.search,
-        decoration: InputDecoration(
-          hintText: 'Nombre, teléfono, folio, IMEI, SKU…',
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: _query.isEmpty ? null : IconButton(
-            tooltip: 'Limpiar búsqueda',
-            onPressed: () {
-              _controller.clear();
-              _search('');
-            },
-            icon: const Icon(Icons.close),
-          ),
-        ),
-      ),
-      const SizedBox(height: 12),
       Expanded(
         child: _query.length < 2
-            ? const EmptyState(
-                title: 'Busca en todo el taller',
-                message: 'Escribe al menos dos caracteres para comenzar.',
+            ? const Center(
+                child: EmptyState(
+                  title: 'Busca en todo el taller',
+                  message: 'Escribe al menos dos caracteres en la barra superior para comenzar.',
+                ),
               )
             : FutureBuilder<List<Map<String, Object?>>>(
                 future: _results,
@@ -86,9 +77,11 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
                   }
                   final rows = snapshot.data!;
                   if (rows.isEmpty) {
-                    return const EmptyState(
-                      title: 'Sin coincidencias',
-                      message: 'Prueba con otro nombre, folio, teléfono, IMEI o código.',
+                    return const Center(
+                      child: EmptyState(
+                        title: 'Sin coincidencias',
+                        message: 'Prueba con otro nombre, folio, teléfono, IMEI o código.',
+                      ),
                     );
                   }
                   return ListView.separated(
