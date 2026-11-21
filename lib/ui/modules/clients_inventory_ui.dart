@@ -72,6 +72,7 @@ class _InventoryPageState extends State<InventoryPage> {
   void initState() { super.initState(); _refresh(); }
   void _refresh() => _future = widget.store.inventory(query: _query.text);
   bool _canManage() => AuthService.can(widget.store.authenticatedUser?.role ?? '', 'inventory.manage');
+  bool _canViewCost() => AuthService.can(widget.store.authenticatedUser?.role ?? '', 'inventory.cost.view');
   @override
   void dispose() { _query.dispose(); super.dispose(); }
   Future<void> _edit([Map<String, Object?>? item]) async { final r = await showDialog<bool>(context: context, builder: (_) => InventoryFormDialog(store: widget.store, item: item)); if (r == true && mounted) setState(_refresh); }
@@ -85,10 +86,29 @@ class _InventoryPageState extends State<InventoryPage> {
       final rows = snap.data!;
       if (rows.isEmpty) return const EmptyState(title: 'Inventario vacío', message: 'Agrega productos, refacciones y accesorios para controlar existencias.');
       return ListView.builder(itemCount: rows.length, itemBuilder: (context, i) {
-        final item = rows[i]; final low = _num(item['stock']) <= _num(item['min_stock']);
+        final item = rows[i];
+        final low = _num(item['stock']) <= _num(item['min_stock']);
+        final metrics = _canViewCost()
+            ? ProductPricingRules.metrics(cost: _num(item['cost']), salePrice: _num(item['price']))
+            : null;
         return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Row(children: [
           Container(width: 42, height: 42, decoration: BoxDecoration(color: low ? const Color(0xFFFFF1E2) : eShokPurpleLight.withValues(alpha: .28), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.inventory_2_outlined, color: low ? const Color(0xFFCA7B2C) : eShokPurple)),
-          const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_str(item['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)), const SizedBox(height: 3), Text('${_str(item['sku'], 'Sin SKU')} · ${_str(item['category'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))), const SizedBox(height: 4), Text('${_num(item['stock']).toStringAsFixed(0)} en existencia · ${_money(item['price'])}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: eShokInk))])),
+          const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(_str(item['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+            const SizedBox(height: 3),
+            Text('${_str(item['sku'], 'Sin SKU')} · ${_str(item['category'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))),
+            const SizedBox(height: 4),
+            Text('${_num(item['stock']).toStringAsFixed(0)} en existencia · ${_money(item['price'])}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: eShokInk)),
+            if (metrics != null) ...[
+              const SizedBox(height: 3),
+              Text('Costo ${_money(item['cost'])} · Utilidad ${_money(metrics['profit'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF756A85))),
+              Text(metrics['margin_percent'] == null
+                  ? 'Margen no calculable'
+                  : 'Margen ${metrics['margin_percent']!.toStringAsFixed(1)}% · Sobre costo ${metrics['markup_percent']!.toStringAsFixed(1)}%',
+                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                  color: (metrics['profit'] ?? 0) < 0 ? const Color(0xFFC14F5A) : const Color(0xFF29966F))),
+            ],
+          ])),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [if (low) const Text('STOCK BAJO', style: TextStyle(fontSize: 8, color: Color(0xFFCA7B2C), fontWeight: FontWeight.w900)), if (_canManage()) TextButton(onPressed: () => _adjust(item), child: const Text('Movimiento', style: TextStyle(fontSize: 10))), if (_canManage()) PopupMenuButton<String>(onSelected: (v) { if (v == 'edit') _edit(item); if (v == 'adjust') _adjust(item); }, itemBuilder: (_) => const [PopupMenuItem(value: 'edit', child: Text('Editar artículo')), PopupMenuItem(value: 'adjust', child: Text('Ajustar stock'))])]),
         ])));
       });
@@ -111,14 +131,58 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
   late final cost = TextEditingController(text: _str(widget.item?['cost'], '0'));
   late final price = TextEditingController(text: _str(widget.item?['price'], '0'));
   late final location = TextEditingController(text: _str(widget.item?['location']));
+  late final pricingValue = TextEditingController(text: '30');
+  String pricingMethod = ProductPricingRules.percentageProfit;
   final form = GlobalKey<FormState>();
   @override
-  void dispose() { for (final c in [sku,name,category,stock,minStock,cost,price,location]) { c.dispose(); } super.dispose(); }
+  void dispose() { for (final c in [sku,name,category,stock,minStock,cost,price,location,pricingValue]) { c.dispose(); } super.dispose(); }
   double val(TextEditingController c) => double.tryParse(c.text) ?? 0;
+  double? get suggestedPrice {
+    try {
+      return ProductPricingRules.suggestedPrice(
+        cost: val(cost), method: pricingMethod, value: val(pricingValue),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+  String get pricingHelp => switch (pricingMethod) {
+    ProductPricingRules.directCost => 'El precio sugerido será igual al costo.',
+    ProductPricingRules.fixedProfit => 'Agrega una cantidad fija al costo.',
+    ProductPricingRules.percentageProfit => 'Aplica el porcentaje sobre el costo.',
+    ProductPricingRules.percentageSale => 'Calcula el precio para obtener ese margen sobre el precio final.',
+    _ => '',
+  };
   @override
   Widget build(BuildContext context) => AlertDialog(scrollable: true, title: Text(widget.item == null ? 'Nuevo artículo' : 'Editar artículo'), content: SizedBox(width: 420, child: SingleChildScrollView(child: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, children: [
     _field(name, 'Nombre', required: true), const SizedBox(height: 8), Row(children: [Expanded(child: _field(sku, 'SKU / código')), const SizedBox(width: 8), Expanded(child: _field(category, 'Categoría'))]), const SizedBox(height: 8), Row(children: [Expanded(child: widget.item == null ? _field(stock, 'Existencia inicial', number: true) : InputDecorator(decoration: const InputDecoration(labelText: 'Existencia actual'), child: Text(_str(widget.item?['stock'], '0')))), const SizedBox(width: 8), Expanded(child: _field(minStock, 'Mínimo', number: true))]),
-    if (widget.item != null) const Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 4), child: Text('Para modificar existencias, registra un movimiento de inventario. Así se conserva el historial.', style: TextStyle(fontSize: 10, color: Color(0xFF81778D))))), const SizedBox(height: 8), Row(children: [Expanded(child: _field(cost, 'Costo', number: true)), const SizedBox(width: 8), Expanded(child: _field(price, 'Precio', number: true))]), const SizedBox(height: 8), _field(location, 'Ubicación'),
+    if (widget.item != null) const Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 4), child: Text('Para modificar existencias, registra un movimiento de inventario. Así se conserva el historial.', style: TextStyle(fontSize: 10, color: Color(0xFF81778D))))),
+    const SizedBox(height: 8),
+    Row(children: [Expanded(child: _field(cost, 'Costo', number: true, onChanged: (_) => setState(() {}))), const SizedBox(width: 8), Expanded(child: _field(price, 'Precio', number: true))]),
+    const SizedBox(height: 9),
+    DropdownButtonFormField<String>(
+      value: pricingMethod,
+      decoration: const InputDecoration(labelText: 'Regla para sugerir precio'),
+      items: const [
+        DropdownMenuItem(value: ProductPricingRules.directCost, child: Text('Costo directo')),
+        DropdownMenuItem(value: ProductPricingRules.fixedProfit, child: Text('Ganancia fija')),
+        DropdownMenuItem(value: ProductPricingRules.percentageProfit, child: Text('% sobre costo')),
+        DropdownMenuItem(value: ProductPricingRules.percentageSale, child: Text('% de margen sobre venta')),
+      ],
+      onChanged: (value) => setState(() { pricingMethod = value ?? ProductPricingRules.percentageProfit; }),
+    ),
+    if (pricingMethod != ProductPricingRules.directCost) ...[
+      const SizedBox(height: 8),
+      _field(pricingValue, pricingMethod == ProductPricingRules.fixedProfit ? 'Ganancia fija ($)' : 'Porcentaje (%)', number: true, onChanged: (_) => setState(() {})),
+    ],
+    const SizedBox(height: 7),
+    Text(pricingHelp, style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+    const SizedBox(height: 5),
+    Row(children: [
+      Expanded(child: Text(suggestedPrice == null ? 'Revisa costo y porcentaje para calcular.' : 'Precio sugerido: ${_money(suggestedPrice)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: eShokPurple))),
+      TextButton.icon(onPressed: suggestedPrice == null ? null : () => setState(() { price.text = suggestedPrice!.toStringAsFixed(2); }), icon: const Icon(Icons.calculate_outlined, size: 16), label: const Text('Aplicar')),
+    ]),
+    const SizedBox(height: 8), _field(location, 'Ubicación'),
   ])))), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')), FilledButton(onPressed: () async { if (!form.currentState!.validate()) return; await widget.store.saveInventoryItem(id: widget.item?['id'] as int?, sku: sku.text, name: name.text, category: category.text, stock: widget.item == null ? val(stock) : _num(widget.item?['stock']), minStock: val(minStock), cost: val(cost), price: val(price), location: location.text); if (context.mounted) Navigator.pop(context, true); }, child: const Text('Guardar'))]);
 }
 
