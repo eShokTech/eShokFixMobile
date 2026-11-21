@@ -47,4 +47,16 @@ void main() {
     });
   });
 
+
+  group('OrderPartAccounting', () {
+    test('calculates material line totals', () {
+      expect(OrderPartAccounting.lineTotal(2, 180), 360);
+    });
+
+    test('recalculates order total with labor, parts and discount', () {
+      expect(OrderPartAccounting.orderTotal(labor: 350, parts: 180, discount: 30), 500);
+      expect(OrderPartAccounting.orderTotal(labor: 100, parts: 0, discount: 150), 0);
+    });
+  });
+
 }
