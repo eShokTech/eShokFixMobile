@@ -74,7 +74,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 4,
+      version: 5,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -137,7 +137,8 @@ class LocalStore {
         batch.execute('''CREATE TABLE cash_movements(
           id INTEGER PRIMARY KEY AUTOINCREMENT, movement_type TEXT NOT NULL,
           amount REAL NOT NULL, concept TEXT NOT NULL, reference TEXT DEFAULT '',
-          created_at TEXT NOT NULL, related_order_id INTEGER, related_sale_id INTEGER)''');
+          created_at TEXT NOT NULL, related_order_id INTEGER, related_sale_id INTEGER,
+          payment_method TEXT NOT NULL DEFAULT 'EFECTIVO')''');
         batch.execute('''CREATE TABLE cash_cuts(
           id INTEGER PRIMARY KEY AUTOINCREMENT, opened_at TEXT NOT NULL,
           closed_at TEXT NOT NULL, expected REAL NOT NULL, counted REAL NOT NULL,
@@ -186,6 +187,10 @@ class LocalStore {
           await db.execute("ALTER TABLE service_orders ADD COLUMN authorized_by TEXT DEFAULT ''");
           await db.execute("ALTER TABLE service_orders ADD COLUMN authorization_method TEXT DEFAULT ''");
           await db.execute("ALTER TABLE service_orders ADD COLUMN authorization_note TEXT DEFAULT ''");
+        }
+        if (oldVersion < 5) {
+          await db.execute("ALTER TABLE cash_movements ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'EFECTIVO'");
+          await db.execute("UPDATE cash_movements SET payment_method=UPPER(reference) WHERE UPPER(COALESCE(reference,'')) IN ('TRANSFERENCIA','TARJETA','OTRO')");
         }
       },
     );
@@ -327,7 +332,7 @@ class LocalStore {
       if (deposit > 0) {
         await tx.insert('payments', {'order_id': orderId, 'amount': deposit, 'method': 'EFECTIVO', 'reference': '', 'notes': 'Anticipo de recepción', 'created_at': now});
         await tx.update('service_orders', {'paid': deposit, 'deposit': deposit}, where: 'id=?', whereArgs: [orderId]);
-        await tx.insert('cash_movements', {'movement_type': 'IN', 'amount': deposit, 'concept': 'Anticipo $folio', 'reference': folio, 'created_at': now, 'related_order_id': orderId});
+        await tx.insert('cash_movements', {'movement_type': 'IN', 'amount': deposit, 'concept': 'Anticipo $folio', 'reference': folio, 'created_at': now, 'related_order_id': orderId, 'payment_method': 'EFECTIVO'});
         await tx.insert('audit_log', {'entity': 'payment', 'entity_id': orderId, 'action': 'DEPOSIT', 'detail': '$deposit · EFECTIVO', 'created_at': now});
         await tx.insert('sync_outbox', {'entity': 'payment', 'entity_id': orderId, 'operation': 'CREATE', 'payload': jsonEncode({'amount': deposit, 'method': 'EFECTIVO', 'folio': folio}), 'created_at': now});
       }
@@ -557,7 +562,7 @@ class LocalStore {
       if (amount > total - paid + 0.01) throw StateError('El pago supera el saldo pendiente.');
       await tx.insert('payments', {'order_id': orderId, 'amount': amount, 'method': method, 'reference': reference, 'notes': notes, 'created_at': now});
       await tx.update('service_orders', {'paid': paid + amount}, where: 'id=?', whereArgs: [orderId]);
-      await tx.insert('cash_movements', {'movement_type': 'IN', 'amount': amount, 'concept': 'Pago de reparación ${row.first['folio']}', 'reference': reference, 'created_at': now, 'related_order_id': orderId});
+      await tx.insert('cash_movements', {'movement_type': 'IN', 'amount': amount, 'concept': 'Pago de reparación ${row.first['folio']}', 'reference': reference, 'created_at': now, 'related_order_id': orderId, 'payment_method': method});
       await tx.insert('audit_log', {'entity': 'payment', 'entity_id': orderId, 'action': 'CREATE', 'detail': '$amount · $method', 'created_at': now});
       await tx.insert('sync_outbox', {'entity': 'payment', 'entity_id': orderId, 'operation': 'CREATE', 'payload': jsonEncode({'amount': amount, 'method': method, 'reference': reference}), 'created_at': now});
     });
@@ -739,7 +744,7 @@ class LocalStore {
         await tx.insert('cash_movements', {
           'movement_type': 'OUT', 'amount': paid,
           'concept': 'Pago de compra $folio', 'reference': paymentMethod,
-          'created_at': now,
+          'payment_method': paymentMethod, 'created_at': now,
         });
       }
       await tx.insert('audit_log', {
@@ -786,7 +791,7 @@ class LocalStore {
         'movement_type': 'OUT', 'amount': amount,
         'concept': 'Abono a compra ${rows.first['folio']}',
         'reference': reference.trim().isEmpty ? method : reference.trim(),
-        'created_at': now,
+        'payment_method': method, 'created_at': now,
       });
       await tx.insert('audit_log', {
         'entity': 'purchase', 'entity_id': purchaseId,
@@ -819,7 +824,7 @@ class LocalStore {
       final folio = _moneyFolio('PV', saleId);
       await tx.update('sales', {'folio': folio}, where: 'id=?', whereArgs: [saleId]);
       await tx.insert('sale_items', {'sale_id': saleId, 'item_id': itemId, 'description': description, 'quantity': quantity, 'unit_price': unitPrice, 'line_total': subtotal});
-      await tx.insert('cash_movements', {'movement_type': 'IN', 'amount': total, 'concept': 'Venta POS $folio', 'reference': paymentMethod, 'created_at': now, 'related_sale_id': saleId});
+      await tx.insert('cash_movements', {'movement_type': 'IN', 'amount': total, 'concept': 'Venta POS $folio', 'reference': paymentMethod, 'payment_method': paymentMethod, 'created_at': now, 'related_sale_id': saleId});
       await tx.insert('audit_log', {'entity': 'sale', 'entity_id': saleId, 'action': 'CREATE', 'detail': '$folio · $total', 'created_at': now});
       await tx.insert('sync_outbox', {'entity': 'sale', 'entity_id': saleId, 'operation': 'CREATE', 'payload': jsonEncode({'folio': folio, 'total': total, 'method': paymentMethod}), 'created_at': now});
     });
@@ -924,7 +929,7 @@ class LocalStore {
         await tx.insert('cash_movements', {
           'movement_type': 'IN', 'amount': total,
           'concept': 'Venta POS $folio', 'reference': paymentMethod,
-          'created_at': now, 'related_sale_id': saleId,
+          'created_at': now, 'related_sale_id': saleId, 'payment_method': paymentMethod,
         });
       }
       await tx.insert('audit_log', {
@@ -947,19 +952,49 @@ class LocalStore {
   }
 
   Future<Map<String, double>> cashSummary() async {
-    final rows = await db.rawQuery('''SELECT COALESCE(SUM(CASE WHEN movement_type='IN' THEN amount ELSE -amount END),0) balance,
+    const period = "created_at > COALESCE((SELECT MAX(closed_at) FROM cash_cuts),'0000-01-01')";
+    final cashRows = await db.rawQuery('''SELECT
+      COALESCE(SUM(CASE WHEN movement_type='IN' THEN amount ELSE -amount END),0) balance,
       COALESCE(SUM(CASE WHEN movement_type='IN' THEN amount ELSE 0 END),0) income,
-      COALESCE(SUM(CASE WHEN movement_type='OUT' THEN amount ELSE 0 END),0) expense FROM cash_movements
-      WHERE created_at > COALESCE((SELECT MAX(closed_at) FROM cash_cuts),'0000-01-01')''');
-    return {'balance': (rows.first['balance'] as num).toDouble(), 'income': (rows.first['income'] as num).toDouble(), 'expense': (rows.first['expense'] as num).toDouble()};
+      COALESCE(SUM(CASE WHEN movement_type='OUT' THEN amount ELSE 0 END),0) expense
+      FROM cash_movements WHERE $period AND payment_method='EFECTIVO' ''');
+    final electronicRows = await db.rawQuery('''SELECT
+      COALESCE(SUM(CASE WHEN movement_type='IN' THEN amount ELSE -amount END),0) balance,
+      COALESCE(SUM(CASE WHEN movement_type='IN' THEN amount ELSE 0 END),0) income,
+      COALESCE(SUM(CASE WHEN movement_type='OUT' THEN amount ELSE 0 END),0) expense
+      FROM cash_movements WHERE $period AND payment_method!='EFECTIVO' ''');
+    return {
+      'balance': (cashRows.first['balance'] as num).toDouble(),
+      'income': (cashRows.first['income'] as num).toDouble(),
+      'expense': (cashRows.first['expense'] as num).toDouble(),
+      'digital_balance': (electronicRows.first['balance'] as num).toDouble(),
+      'digital_income': (electronicRows.first['income'] as num).toDouble(),
+      'digital_expense': (electronicRows.first['expense'] as num).toDouble(),
+    };
   }
 
-  Future<void> addCashMovement({required bool income, required double amount, required String concept, String reference = ''}) async {
+  Future<void> addCashMovement({
+    required bool income,
+    required double amount,
+    required String concept,
+    String reference = '',
+    String paymentMethod = 'EFECTIVO',
+  }) async {
     if (amount <= 0) throw ArgumentError('El importe debe ser mayor a cero.');
     final now = _now();
-    final id = await db.insert('cash_movements', {'movement_type': income ? 'IN' : 'OUT', 'amount': amount, 'concept': concept.trim(), 'reference': reference.trim(), 'created_at': now});
-    await _audit('cash_movement', id, income ? 'IN' : 'OUT', '$amount · ${concept.trim()}');
-    await _outbox('cash_movement', id, 'CREATE', {'amount': amount, 'type': income ? 'IN' : 'OUT', 'concept': concept.trim()});
+    final id = await db.insert('cash_movements', {
+      'movement_type': income ? 'IN' : 'OUT',
+      'amount': amount,
+      'concept': concept.trim(),
+      'reference': reference.trim(),
+      'payment_method': paymentMethod,
+      'created_at': now,
+    });
+    await _audit('cash_movement', id, income ? 'IN' : 'OUT', '$amount · ${concept.trim()} · $paymentMethod');
+    await _outbox('cash_movement', id, 'CREATE', {
+      'amount': amount, 'type': income ? 'IN' : 'OUT',
+      'concept': concept.trim(), 'payment_method': paymentMethod,
+    });
   }
 
   Future<void> closeCashCut(double counted, String notes) async {
