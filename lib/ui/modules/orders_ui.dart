@@ -13,6 +13,7 @@ class _OrdersPageState extends State<OrdersPage> {
   @override
   void initState() { super.initState(); _refresh(); }
   void _refresh() => _future = widget.store.orders(query: _search.text, status: _status);
+  bool _can(String permission) => AuthService.can(widget.store.authenticatedUser?.role ?? '', permission);
   @override
   void dispose() { _search.dispose(); super.dispose(); }
   Future<void> _newOrder() async {
@@ -21,7 +22,7 @@ class _OrdersPageState extends State<OrdersPage> {
   }
   @override
   Widget build(BuildContext context) => PageFrame(child: Column(children: [
-    SectionHeading('Órdenes de servicio', subtitle: 'Recepción, diagnóstico, reparación y entrega', trailing: FilledButton.tonalIcon(onPressed: _newOrder, icon: const Icon(Icons.add, size: 18), label: const Text('Nueva'))),
+    SectionHeading('Órdenes de servicio', subtitle: 'Recepción, diagnóstico, reparación y entrega', trailing: _can('orders.manage') ? FilledButton.tonalIcon(onPressed: _newOrder, icon: const Icon(Icons.add, size: 18), label: const Text('Nueva')) : null),
     const SizedBox(height: 14),
     TextField(controller: _search, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar folio, cliente, teléfono o modelo'), onChanged: (_) => setState(_refresh)),
     const SizedBox(height: 9),
@@ -209,6 +210,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   @override
   void initState() { super.initState(); _refresh(); }
   void _refresh() => _data = widget.store.order(widget.orderId);
+  bool _can(String permission) => AuthService.can(widget.store.authenticatedUser?.role ?? '', permission);
   Future<void> _cancelOrder() async {
     final reason = TextEditingController();
     String method = 'EFECTIVO';
@@ -458,7 +460,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         SectionHeading('Flujo de trabajo', subtitle: 'Las transiciones no válidas se bloquean'),
         const SizedBox(height: 8),
         GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Wrap(spacing: 7, runSpacing: 7, children: OrderWorkflow.transitions[status]!.where((next) => next != 'CANCELADO').map((next) {
+          if (_can('orders.manage')) Wrap(spacing: 7, runSpacing: 7, children: OrderWorkflow.transitions[status]!.where((next) => next != 'CANCELADO').map((next) {
             final authorizationPending = _str(o['authorization_status'], 'PENDING') != 'APPROVED';
             final needsAuthorization = next == 'ESPERA_REFACCION' || next == 'REPARACION';
             return ActionChip(
@@ -468,7 +470,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
               backgroundColor: eShokPurpleLight.withValues(alpha: .28),
             );
           }).toList()),
-          if (status == 'ESPERA_AUTORIZACION') ...[
+          if (status == 'ESPERA_AUTORIZACION' && _can('orders.authorize')) ...[
             const SizedBox(height: 10),
             if (_str(o['authorization_status'], 'PENDING') == 'APPROVED')
               Container(
@@ -496,7 +498,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                 ),
               ),
           ],
-          if (status != 'ENTREGADO' && status != 'CANCELADO')
+          if (_can('orders.cancel') && status != 'ENTREGADO' && status != 'CANCELADO')
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -506,7 +508,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
               ),
             ),
           const SizedBox(height: 8),
-          OutlinedButton.icon(onPressed: () => _diagnosis(_str(o['diagnosis']), _str(o['notes'])), icon: const Icon(Icons.edit_note), label: const Text('Editar diagnóstico y notas')),
+          if (_can('orders.manage')) OutlinedButton.icon(onPressed: () => _diagnosis(_str(o['diagnosis']), _str(o['notes'])), icon: const Icon(Icons.edit_note), label: const Text('Editar diagnóstico y notas')),
         ])),
         const SizedBox(height: 12),
         SectionHeading('Información del equipo'),
@@ -517,7 +519,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         const SizedBox(height: 12),
         Row(children: [
           const Expanded(child: SectionHeading('Refacciones y materiales')),
-          FilledButton.tonalIcon(
+          if (_can('orders.manage')) FilledButton.tonalIcon(
             onPressed: status == 'ENTREGADO' || status == 'CANCELADO' || _str(o['authorization_status'], 'PENDING') != 'APPROVED' ? null : _addPart,
             icon: const Icon(Icons.add, size: 17),
             label: const Text('Agregar'),
@@ -549,7 +551,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         GlassCard(child: Column(children: [
           _detail('Mano de obra', _money(o['labor'])), _detail('Refacciones', _money(o['parts_total'])), _detail('Descuento', _money(o['discount'])), _detail('Total', _money(o['total'])), _detail('Pagado', _money(o['paid'])),
           Row(children: [Expanded(child: Text('Saldo pendiente', style: const TextStyle(fontWeight: FontWeight.w800))), Text(_money(balance), style: TextStyle(fontWeight: FontWeight.w900, color: balance > 0 ? const Color(0xFFBA6D2B) : const Color(0xFF258A62)))]),
-          const SizedBox(height: 10), Row(children: [Expanded(child: FilledButton.icon(onPressed: balance > 0 ? () => _payment(balance) : null, icon: const Icon(Icons.payments_outlined), label: const Text('Registrar pago'))), const SizedBox(width: 8), IconButton.filledTonal(onPressed: () => _printTicket(o), icon: const Icon(Icons.print_outlined), tooltip: 'Imprimir / PDF')]),
+          const SizedBox(height: 10), Row(children: [if (_can('orders.pay')) Expanded(child: FilledButton.icon(onPressed: balance > 0 ? () => _payment(balance) : null, icon: const Icon(Icons.payments_outlined), label: const Text('Registrar pago'))), if (_can('orders.pay')) const SizedBox(width: 8), IconButton.filledTonal(onPressed: () => _printTicket(o), icon: const Icon(Icons.print_outlined), tooltip: 'Imprimir / PDF')]),
           Align(alignment: Alignment.centerLeft, child: Text('Garantía al entregar: ${o['warranty_days']} días', style: const TextStyle(fontSize: 10, color: Color(0xFF867C91)))),
         ])),
         const SizedBox(height: 12),
@@ -589,7 +591,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           },
         ),
         const SizedBox(height: 12),
-        Row(children: [Expanded(child: SectionHeading('Evidencias')), FilledButton.tonalIcon(onPressed: _evidence, icon: const Icon(Icons.add_a_photo_outlined, size: 17), label: const Text('Tomar foto'))]),
+        Row(children: [Expanded(child: SectionHeading('Evidencias')), if (_can('orders.manage')) FilledButton.tonalIcon(onPressed: _evidence, icon: const Icon(Icons.add_a_photo_outlined, size: 17), label: const Text('Tomar foto'))]),
         const SizedBox(height: 8),
         FutureBuilder<List<Map<String, Object?>>>(future: widget.store.orderEvidence(widget.orderId), builder: (context, evidenceSnap) {
           final rows = evidenceSnap.data ?? [];
