@@ -286,8 +286,8 @@ void main() {
       store.deleteClient(clientId),
       throwsA(isA<StateError>()),
     );
-    final client = await store.client(clientId);
-    expect(client, isNotNull);
+    final clients = await store.clients(query: 'Cliente con historial');
+    expect(clients, hasLength(1));
   });
 
 }
