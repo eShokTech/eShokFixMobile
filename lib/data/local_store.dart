@@ -3,6 +3,23 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import '../domain/workflow.dart';
 
+Future<void> _createOrderPartsTable(DatabaseExecutor db) async {
+  await db.execute('''CREATE TABLE order_parts(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    unit_cost REAL NOT NULL,
+    unit_price REAL NOT NULL,
+    line_total REAL NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(order_id) REFERENCES service_orders(id) ON DELETE CASCADE,
+    FOREIGN KEY(item_id) REFERENCES inventory_items(id)
+  )''');
+  await db.execute('CREATE INDEX idx_order_parts_order ON order_parts(order_id)');
+}
+
 Future<void> _createPurchaseTables(DatabaseExecutor db) async {
   await db.execute('''CREATE TABLE suppliers(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,7 +74,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 2,
+      version: 3,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -152,10 +169,14 @@ class LocalStore {
         batch.execute('CREATE INDEX idx_outbox_state ON sync_outbox(sync_state)');
         await batch.commit(noResult: true);
         await _createPurchaseTables(db);
+        await _createOrderPartsTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await _createPurchaseTables(db);
+        }
+        if (oldVersion < 3) {
+          await _createOrderPartsTable(db);
         }
       },
     );
@@ -302,6 +323,100 @@ class LocalStore {
         await tx.insert('sync_outbox', {'entity': 'payment', 'entity_id': orderId, 'operation': 'CREATE', 'payload': jsonEncode({'amount': deposit, 'method': 'EFECTIVO', 'folio': folio}), 'created_at': now});
       }
       return orderId;
+    });
+  }
+
+  Future<List<Map<String, Object?>>> orderParts(int orderId) =>
+      db.query('order_parts', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC');
+
+  Future<void> addOrderPart(
+    int orderId,
+    int itemId,
+    double quantity, {
+    double? unitPrice,
+  }) async {
+    if (quantity <= 0) throw ArgumentError('La cantidad debe ser mayor a cero.');
+    final now = _now();
+    await db.transaction((tx) async {
+      final orderRows = await tx.query(
+        'service_orders',
+        columns: ['folio', 'status', 'labor', 'parts_total', 'discount', 'paid'],
+        where: 'id=?',
+        whereArgs: [orderId],
+        limit: 1,
+      );
+      if (orderRows.isEmpty) throw StateError('Orden no encontrada.');
+      final orderRow = orderRows.first;
+      final status = orderRow['status'] as String;
+      if (status == 'ENTREGADO' || status == 'CANCELADO') {
+        throw StateError('No se pueden agregar refacciones a una orden cerrada.');
+      }
+
+      final inventoryRows = await tx.query(
+        'inventory_items',
+        columns: ['name', 'stock', 'cost', 'price'],
+        where: 'id=?',
+        whereArgs: [itemId],
+        limit: 1,
+      );
+      if (inventoryRows.isEmpty) throw StateError('Artículo de inventario no encontrado.');
+      final inventoryItem = inventoryRows.first;
+      final stock = (inventoryItem['stock'] as num).toDouble();
+      if (stock < quantity) throw StateError('Existencia insuficiente para esta refacción.');
+
+      final cost = (inventoryItem['cost'] as num).toDouble();
+      final price = unitPrice ?? (inventoryItem['price'] as num).toDouble();
+      if (price < 0) throw ArgumentError('El precio de venta no puede ser negativo.');
+      final lineTotal = OrderPartAccounting.lineTotal(quantity, price);
+      final newPartsTotal = (orderRow['parts_total'] as num).toDouble() + lineTotal;
+      final labor = (orderRow['labor'] as num).toDouble();
+      final discount = (orderRow['discount'] as num).toDouble();
+      final newTotal = OrderPartAccounting.orderTotal(
+        labor: labor, parts: newPartsTotal, discount: discount,
+      );
+      final alreadyPaid = (orderRow['paid'] as num).toDouble();
+      if (newTotal + 0.01 < alreadyPaid) {
+        throw StateError('El nuevo total no puede quedar por debajo de lo que ya se cobró.');
+      }
+
+      await tx.insert('order_parts', {
+        'order_id': orderId,
+        'item_id': itemId,
+        'description': inventoryItem['name'],
+        'quantity': quantity,
+        'unit_cost': cost,
+        'unit_price': price,
+        'line_total': lineTotal,
+        'created_at': now,
+      });
+      await tx.update('inventory_items', {
+        'stock': stock - quantity, 'updated_at': now,
+      }, where: 'id=?', whereArgs: [itemId]);
+      await tx.insert('inventory_movements', {
+        'item_id': itemId, 'movement_type': 'OUT',
+        'quantity': quantity,
+        'reason': 'Refacción en orden ${orderRow['folio']}',
+        'related_order_id': orderId, 'created_at': now,
+      });
+      await tx.update('service_orders', {
+        'parts_total': newPartsTotal, 'total': newTotal,
+      }, where: 'id=?', whereArgs: [orderId]);
+      await tx.insert('audit_log', {
+        'entity': 'service_order', 'entity_id': orderId,
+        'action': 'PART_ADDED',
+        'detail': '${inventoryItem['name']} · $quantity · $lineTotal',
+        'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'order_part', 'entity_id': orderId,
+        'operation': 'CREATE',
+        'payload': jsonEncode({
+          'order_id': orderId, 'item_id': itemId,
+          'quantity': quantity, 'unit_cost': cost,
+          'unit_price': price, 'line_total': lineTotal,
+        }),
+        'created_at': now,
+      });
     });
   }
 
