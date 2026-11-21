@@ -354,7 +354,15 @@ class _NewOrderDialogState extends State<NewOrderDialog> {
   bool _saving = false;
   @override
   void initState() { super.initState(); _loadClients(); }
-  Future<void> _loadClients() async { final rows = await widget.store.clients(); if (mounted) setState(() { _clients = rows; _clientId ??= rows.isNotEmpty ? rows.first['id'] as int : null; }); }
+  Future<void> _loadClients() async {
+    final rows = await widget.store.clients();
+    final warrantyDays = await widget.store.setting('default_warranty_days', fallback: '30');
+    if (mounted) setState(() {
+      _clients = rows;
+      _clientId ??= rows.isNotEmpty ? rows.first['id'] as int : null;
+      _warranty.text = warrantyDays;
+    });
+  }
   @override
   void dispose() { for (final c in [_brand,_model,_failure,_condition,_accessories,_technician,_imei,_serial,_labor,_parts,_discount,_deposit,_notes,_warranty]) { c.dispose(); } super.dispose(); }
   double _v(TextEditingController c) => double.tryParse(c.text.replaceAll(',', '.')) ?? 0;
@@ -383,7 +391,7 @@ class _NewOrderDialogState extends State<NewOrderDialog> {
       const SizedBox(height: 9), _field(_condition, 'Estado físico / observaciones', lines: 2),
       const SizedBox(height: 9), _field(_accessories, 'Accesorios recibidos'),
       const SizedBox(height: 9), Row(children: [Expanded(child: _field(_imei, 'IMEI')), const SizedBox(width: 8), Expanded(child: _field(_serial, 'Serie'))]),
-      const SizedBox(height: 9), Row(children: [Expanded(child: _field(_labor, 'Mano de obra', number: true)), const SizedBox(width: 8), Expanded(child: _field(_parts, 'Refacciones', number: true))]),
+      const SizedBox(height: 9), Row(children: [Expanded(child: _field(_labor, 'Mano de obra', number: true)), const SizedBox(width: 8), Expanded(child: _field(_parts, 'Refacciones manuales (sin inventario)', number: true))]),
       const SizedBox(height: 9), Row(children: [Expanded(child: _field(_discount, 'Descuento', number: true)), const SizedBox(width: 8), Expanded(child: _field(_deposit, 'Anticipo', number: true))]),
       const SizedBox(height: 9), Row(children: [Expanded(child: _field(_technician, 'Técnico')), const SizedBox(width: 8), SizedBox(width: 92, child: _field(_warranty, 'Garantía días', number: true))]),
       const SizedBox(height: 9), _field(_notes, 'Notas internas', lines: 2),
@@ -545,9 +553,10 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     if (result == true) { await widget.store.addEvidence(widget.orderId, safeCopy.path, caption.text); if (mounted) setState(_refresh); }
   }
   Future<void> _printTicket(Map<String, Object?> o) async {
+    final shopName = await widget.store.setting('shop_name', fallback: 'eShokFix');
     final doc = pw.Document();
     doc.addPage(pw.Page(pageFormat: PdfPageFormat.roll80, margin: const pw.EdgeInsets.all(12), build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-      pw.Center(child: pw.Text('eShokFix', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))),
+      pw.Center(child: pw.Text(shopName, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))),
       pw.Center(child: pw.Text('Comprobante de servicio', style: const pw.TextStyle(fontSize: 9))), pw.SizedBox(height: 10), pw.Divider(),
       pw.Text('Folio: ${o['folio']}'), pw.Text('Cliente: ${o['client_name']}'), pw.Text('Equipo: ${_str(o['brand'])} ${_str(o['model'])}'),
       pw.Text('IMEI/Serie: ${_str(o['imei']).isEmpty ? _str(o['serial'], 'No registrado') : _str(o['imei'])}'),
@@ -1221,6 +1230,7 @@ class _SaleDetailDialogState extends State<SaleDetailDialog> {
 
   Future<void> _printTicket(List<Map<String, Object?>> items) async {
     final sale = widget.sale;
+    final shopName = await widget.store.setting('shop_name', fallback: 'eShokFix');
     final doc = pw.Document();
     doc.addPage(pw.Page(
       pageFormat: PdfPageFormat.roll80,
@@ -1228,7 +1238,7 @@ class _SaleDetailDialogState extends State<SaleDetailDialog> {
       build: (_) => pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Center(child: pw.Text('eShokFix', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))),
+          pw.Center(child: pw.Text(shopName, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))),
           pw.Center(child: pw.Text('Ticket de venta', style: const pw.TextStyle(fontSize: 9))),
           pw.SizedBox(height: 8),
           pw.Divider(),
