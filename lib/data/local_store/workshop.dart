@@ -2,6 +2,7 @@ part of '../local_store.dart';
 
 extension LocalStoreWorkshopOperations on LocalStore {
   Future<Map<String, Object?>> dashboard() async {
+    requirePermission('dashboard.view');
     final active = Sqflite.firstIntValue(await db.rawQuery("SELECT COUNT(*) FROM service_orders WHERE status NOT IN ('ENTREGADO','CANCELADO')")) ?? 0;
     final ready = Sqflite.firstIntValue(await db.rawQuery("SELECT COUNT(*) FROM service_orders WHERE status='LISTO'")) ?? 0;
     final clients = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM clients')) ?? 0;
@@ -19,6 +20,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
   }
 
   Future<List<Map<String, Object?>>> clients({String query = ''}) async {
+    requirePermission('clients.view');
     final q = '%${query.trim()}%';
     return db.rawQuery('''SELECT c.*, (SELECT COUNT(*) FROM devices d WHERE d.client_id=c.id) device_count,
       (SELECT COUNT(*) FROM service_orders o WHERE o.client_id=c.id) order_count
@@ -27,6 +29,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
   }
 
   Future<int> saveClient({int? id, required String name, String phone = '', String whatsapp = '', String email = '', String address = '', String notes = ''}) async {
+    requirePermission('clients.manage');
     if (name.trim().isEmpty) throw ArgumentError('El nombre del cliente es obligatorio.');
     final now = _now();
     final data = {'name': name.trim(), 'phone': phone.trim(), 'whatsapp': whatsapp.trim(), 'email': email.trim(), 'address': address.trim(), 'notes': notes.trim(), 'updated_at': now};
@@ -44,6 +47,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
   }
 
   Future<void> deleteClient(int id) async {
+    requirePermission('clients.manage');
     await db.transaction((tx) async {
       final client = await tx.query('clients', columns: ['id', 'name'],
         where: 'id=?', whereArgs: [id], limit: 1);
@@ -72,6 +76,8 @@ extension LocalStoreWorkshopOperations on LocalStore {
   Future<List<Map<String, Object?>>> clientDevices(int clientId) => db.query('devices', where: 'client_id=?', whereArgs: [clientId], orderBy: 'id DESC');
 
   Future<List<Map<String, Object?>>> orders({String query = '', String status = ''}) async {
+    requirePermission('orders.view');
+    requirePermission('clients.view');
     final filters = <String>[];
     final args = <Object?>[];
     if (query.trim().isNotEmpty) {
@@ -86,6 +92,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
   }
 
   Future<Map<String, Object?>?> order(int id) async {
+    requirePermission('orders.view');
     final rows = await db.rawQuery('''SELECT o.*, c.name client_name, c.phone client_phone, c.whatsapp,
       d.brand, d.model, d.color, d.imei, d.serial, d.accessories, d.condition_note
       FROM service_orders o JOIN clients c ON c.id=o.client_id LEFT JOIN devices d ON d.id=o.device_id WHERE o.id=?''', [id]);
@@ -110,6 +117,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     String serial = '',
     int warrantyDays = 30,
   }) async {
+    requirePermission('orders.manage');
     final inputs = [labor, parts, discount, deposit];
     if (inputs.any((value) => !value.isFinite) ||
         inputs.any((value) => value < 0) || warrantyDays < 0) {
@@ -222,6 +230,8 @@ extension LocalStoreWorkshopOperations on LocalStore {
     double quantity, {
     double? unitPrice,
   }) async {
+    requirePermission('orders.manage');
+    requirePermission('orders.view');
     if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad debe ser mayor a cero y válida.');
     final now = _now();
     await db.transaction((tx) async {
@@ -317,6 +327,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     required String method,
     String note = '',
   }) async {
+    requirePermission('orders.authorize');
     if (authorizedBy.trim().isEmpty) {
       throw ArgumentError('Registra quién autorizó el servicio.');
     }
@@ -375,6 +386,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
   }
 
   Future<void> updateDiagnosis(int id, String diagnosis, String notes) async {
+    requirePermission('orders.manage');
     final now = _now();
     await db.transaction((tx) async {
       final rows = await tx.query('service_orders',
@@ -405,6 +417,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
   }
 
   Future<void> setOrderStatus(int id, String next, {String note = ''}) async {
+    requirePermission('orders.manage');
     if (next == 'CANCELADO') {
       throw StateError('Usa la acción Cancelar orden para registrar motivo y reembolso.');
     }
@@ -454,6 +467,9 @@ extension LocalStoreWorkshopOperations on LocalStore {
     required String refundMethod,
     required String reason,
   }) async {
+    requirePermission('orders.manage');
+    requirePermission('orders.pay');
+    requirePermission('orders.pay');
     if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de cancelación.');
     final method = refundMethod.trim().toUpperCase();
     if (!FinancialRules.paymentMethods.contains(method)) {
@@ -519,6 +535,9 @@ extension LocalStoreWorkshopOperations on LocalStore {
   Future<List<Map<String, Object?>>> orderEvents(int id) => db.query('order_events', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC');
   Future<List<Map<String, Object?>>> orderEvidence(int id) => db.query('evidences', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC');
   Future<void> addEvidence(int orderId, String path, String caption) async {
+    requirePermission('orders.manage');
+    requirePermission('orders.view');
+    requirePermission('orders.view');
     final now = _now();
     final id = await db.insert('evidences', {'order_id': orderId, 'file_path': path, 'caption': caption, 'kind': 'photo', 'created_at': now});
     await _audit('evidence', id, 'CREATE', caption);
@@ -533,6 +552,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     String notes = '',
     List<Map<String, Object?>>? paymentBreakdown,
   }) async {
+    requirePermission('orders.pay');
     if (!amount.isFinite || amount <= 0) {
       throw ArgumentError('El importe debe ser mayor a cero y válido.');
     }
