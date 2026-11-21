@@ -273,7 +273,7 @@ class _SaleDialogState extends State<SaleDialog> {
     final total = PurchaseAccounting.total(_subtotal, discountValue);
     return AlertDialog(
       scrollable: true,
-      title: const Text('Nueva venta'),
+      title: Text(widget.embedded ? 'Punto de venta' : 'Nueva venta'),
       content: SizedBox(width: 470, child: Column(mainAxisSize: MainAxisSize.min, children: [
         DropdownButtonFormField<int?>(
           initialValue: clientId,
