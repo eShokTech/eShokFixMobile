@@ -66,6 +66,7 @@ class _NewOrderDialogState extends State<NewOrderDialog> {
   final _warranty = TextEditingController(text: '30');
   List<Map<String, Object?>> _clients = [];
   int? _clientId;
+  String _depositMethod = 'EFECTIVO';
   bool _saving = false;
   @override
   void initState() { super.initState(); _loadClients(); }
@@ -85,7 +86,7 @@ class _NewOrderDialogState extends State<NewOrderDialog> {
     if (!_form.currentState!.validate() || _clientId == null) return;
     setState(() => _saving = true);
     try {
-      await widget.store.createOrder(clientId: _clientId!, brand: _brand.text, model: _model.text, failure: _failure.text, condition: _condition.text, accessories: _accessories.text, technician: _technician.text, labor: _v(_labor), parts: _v(_parts), discount: _v(_discount), deposit: _v(_deposit), notes: _notes.text, imei: _imei.text, serial: _serial.text, warrantyDays: int.tryParse(_warranty.text) ?? 30);
+      await widget.store.createOrder(clientId: _clientId!, brand: _brand.text, model: _model.text, failure: _failure.text, condition: _condition.text, accessories: _accessories.text, technician: _technician.text, labor: _v(_labor), parts: _v(_parts), discount: _v(_discount), deposit: _v(_deposit), depositMethod: _depositMethod, notes: _notes.text, imei: _imei.text, serial: _serial.text, warrantyDays: int.tryParse(_warranty.text) ?? 30);
       if (mounted) Navigator.pop(context, true);
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo guardar: $e'))); }
     if (mounted) setState(() => _saving = false);
@@ -108,6 +109,7 @@ class _NewOrderDialogState extends State<NewOrderDialog> {
       const SizedBox(height: 9), Row(children: [Expanded(child: _field(_imei, 'IMEI')), const SizedBox(width: 8), Expanded(child: _field(_serial, 'Serie'))]),
       const SizedBox(height: 9), Row(children: [Expanded(child: _field(_labor, 'Mano de obra', number: true)), const SizedBox(width: 8), Expanded(child: _field(_parts, 'Refacciones manuales (sin inventario)', number: true))]),
       const SizedBox(height: 9), Row(children: [Expanded(child: _field(_discount, 'Descuento', number: true)), const SizedBox(width: 8), Expanded(child: _field(_deposit, 'Anticipo', number: true))]),
+      const SizedBox(height: 8), DropdownButtonFormField<String>(initialValue: _depositMethod, decoration: const InputDecoration(labelText: 'Medio del anticipo'), items: const ['EFECTIVO','TRANSFERENCIA','TARJETA','OTRO'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => _depositMethod = v ?? _depositMethod)),
       const SizedBox(height: 9), Row(children: [Expanded(child: _field(_technician, 'Técnico')), const SizedBox(width: 8), SizedBox(width: 92, child: _field(_warranty, 'Garantía días', number: true))]),
       const SizedBox(height: 9), _field(_notes, 'Notas internas', lines: 2),
       if (_clientId != null) Align(alignment: Alignment.centerLeft, child: Text('El registro genera folio, historial y evento de recepción.', style: TextStyle(fontSize: 10, color: Colors.grey.shade600))),

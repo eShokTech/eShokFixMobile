@@ -74,34 +74,122 @@ extension LocalStoreWorkshopOperations on LocalStore {
     return rows.isEmpty ? null : rows.first;
   }
 
-  Future<int> createOrder({required int clientId, required String brand, required String model, required String failure, required String condition, required String accessories, required String technician, double labor = 0, double parts = 0, double discount = 0, double deposit = 0, String notes = '', String imei = '', String serial = '', int warrantyDays = 30}) async {
-    if (labor < 0 || parts < 0 || discount < 0 || deposit < 0 || warrantyDays < 0) {
-      throw ArgumentError('Los importes y días de garantía no pueden ser negativos.');
+  Future<int> createOrder({
+    required int clientId,
+    required String brand,
+    required String model,
+    required String failure,
+    required String condition,
+    required String accessories,
+    required String technician,
+    double labor = 0,
+    double parts = 0,
+    double discount = 0,
+    double deposit = 0,
+    String depositMethod = 'EFECTIVO',
+    String notes = '',
+    String imei = '',
+    String serial = '',
+    int warrantyDays = 30,
+  }) async {
+    final inputs = [labor, parts, discount, deposit];
+    if (inputs.any((value) => !value.isFinite) ||
+        inputs.any((value) => value < 0) || warrantyDays < 0) {
+      throw ArgumentError('Los importes y días de garantía deben ser valores válidos no negativos.');
     }
-    if (![labor, parts, discount, deposit].every((value) => value.isFinite)) {
-      throw ArgumentError('Los importes deben ser números válidos.');
+    if (brand.trim().isEmpty || model.trim().isEmpty || failure.trim().isEmpty) {
+      throw ArgumentError('Marca, modelo y falla reportada son obligatorios.');
     }
-    final computedTotal = (labor + parts - discount).clamp(0, double.infinity).toDouble();
-    if (deposit > computedTotal) throw ArgumentError('El anticipo no puede superar el total del servicio.');
-    final clientExists = await db.query('clients', columns: ['id'], where: 'id=?', whereArgs: [clientId], limit: 1);
+    final laborAmount = FinancialRules.money(labor);
+    final partsAmount = FinancialRules.money(parts);
+    final discountAmount = FinancialRules.money(discount);
+    final depositAmount = FinancialRules.money(deposit);
+    final subtotal = FinancialRules.money(laborAmount + partsAmount);
+    if (discountAmount > subtotal) {
+      throw ArgumentError('El descuento no puede superar el subtotal del servicio.');
+    }
+    final computedTotal = FinancialRules.money(subtotal - discountAmount);
+    if (depositAmount > computedTotal) {
+      throw ArgumentError('El anticipo no puede superar el total del servicio.');
+    }
+    final depositTender = FinancialRules.normalizePayments(
+      total: depositAmount,
+      fallbackMethod: depositMethod,
+    );
+    final storedDepositMethod = depositTender.length > 1
+        ? 'MIXTO'
+        : (depositTender.isEmpty ? depositMethod : depositTender.first['method'] as String);
+    final clientExists = await db.query(
+      'clients', columns: ['id'], where: 'id=?', whereArgs: [clientId], limit: 1,
+    );
     if (clientExists.isEmpty) throw StateError('El cliente seleccionado ya no existe.');
     final now = _now();
     return db.transaction((tx) async {
-      final deviceId = await tx.insert('devices', {'client_id': clientId, 'brand': brand.trim(), 'model': model.trim(), 'color': '', 'imei': imei.trim(), 'serial': serial.trim(), 'accessories': accessories.trim(), 'condition_note': condition.trim(), 'notes': '', 'created_at': now});
-      final subtotal = computedTotal;
-      final orderId = await tx.insert('service_orders', {'folio': 'PENDING-${DateTime.now().microsecondsSinceEpoch}', 'client_id': clientId, 'device_id': deviceId, 'status': 'RECIBIDO', 'failure_description': failure.trim(), 'diagnosis': '', 'technician': technician.trim(), 'received_at': now, 'estimated_delivery_at': null, 'delivered_at': null, 'labor': labor, 'parts_total': parts, 'discount': discount, 'total': subtotal < 0 ? 0 : subtotal, 'paid': 0, 'deposit': 0, 'warranty_days': warrantyDays, 'notes': notes.trim()});
+      final deviceId = await tx.insert('devices', {
+        'client_id': clientId, 'brand': brand.trim(), 'model': model.trim(),
+        'color': '', 'imei': imei.trim(), 'serial': serial.trim(),
+        'accessories': accessories.trim(), 'condition_note': condition.trim(),
+        'notes': '', 'created_at': now,
+      });
+      final orderId = await tx.insert('service_orders', {
+        'folio': 'PENDING-${DateTime.now().microsecondsSinceEpoch}',
+        'client_id': clientId, 'device_id': deviceId, 'status': 'RECIBIDO',
+        'failure_description': failure.trim(), 'diagnosis': '',
+        'technician': technician.trim(), 'received_at': now,
+        'estimated_delivery_at': null, 'delivered_at': null,
+        'labor': laborAmount, 'parts_total': partsAmount, 'discount': discountAmount,
+        'total': computedTotal, 'paid': 0, 'deposit': 0,
+        'warranty_days': warrantyDays, 'notes': notes.trim(),
+      });
       final folio = _moneyFolio('EF', orderId);
       await tx.update('service_orders', {'folio': folio}, where: 'id=?', whereArgs: [orderId]);
-      await tx.insert('order_events', {'order_id': orderId, 'from_status': null, 'to_status': 'RECIBIDO', 'description': 'Equipo recibido y registrado', 'created_at': now});
-      await tx.insert('whatsapp_events', {'order_id': orderId, 'event_type': 'RECEIVED', 'message': 'Recibimos tu equipo. Folio $folio.', 'created_at': now});
-      await tx.insert('audit_log', {'entity': 'service_order', 'entity_id': orderId, 'action': 'CREATE', 'detail': folio, 'created_at': now});
-      await tx.insert('sync_outbox', {'entity': 'service_order', 'entity_id': orderId, 'operation': 'CREATE', 'payload': jsonEncode({'folio': folio, 'client_id': clientId}), 'created_at': now});
-      if (deposit > 0) {
-        await tx.insert('payments', {'order_id': orderId, 'amount': deposit, 'method': 'EFECTIVO', 'reference': '', 'notes': 'Anticipo de recepción', 'created_at': now});
-        await tx.update('service_orders', {'paid': deposit, 'deposit': deposit}, where: 'id=?', whereArgs: [orderId]);
-        await tx.insert('cash_movements', {'movement_type': 'IN', 'amount': deposit, 'concept': 'Anticipo $folio', 'reference': folio, 'created_at': now, 'related_order_id': orderId, 'payment_method': 'EFECTIVO'});
-        await tx.insert('audit_log', {'entity': 'payment', 'entity_id': orderId, 'action': 'DEPOSIT', 'detail': '$deposit · EFECTIVO', 'created_at': now});
-        await tx.insert('sync_outbox', {'entity': 'payment', 'entity_id': orderId, 'operation': 'CREATE', 'payload': jsonEncode({'amount': deposit, 'method': 'EFECTIVO', 'folio': folio}), 'created_at': now});
+      await tx.insert('order_events', {
+        'order_id': orderId, 'from_status': null, 'to_status': 'RECIBIDO',
+        'description': 'Equipo recibido y registrado', 'created_at': now,
+      });
+      await tx.insert('whatsapp_events', {
+        'order_id': orderId, 'event_type': 'RECEIVED',
+        'message': 'Recibimos tu equipo. Folio $folio.', 'created_at': now,
+      });
+      await tx.insert('audit_log', {
+        'entity': 'service_order', 'entity_id': orderId,
+        'action': 'CREATE', 'detail': folio, 'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'service_order', 'entity_id': orderId, 'operation': 'CREATE',
+        'payload': jsonEncode({'folio': folio, 'client_id': clientId}),
+        'created_at': now,
+      });
+      if (depositAmount > 0) {
+        for (final part in depositTender) {
+          final method = part['method'] as String;
+          final amount = part['amount'] as double;
+          await tx.insert('payments', {
+            'order_id': orderId, 'amount': amount, 'method': method,
+            'reference': '', 'notes': 'Anticipo de recepción', 'created_at': now,
+          });
+          await tx.insert('cash_movements', {
+            'movement_type': 'IN', 'amount': amount,
+            'concept': 'Anticipo $folio', 'reference': folio,
+            'created_at': now, 'related_order_id': orderId,
+            'payment_method': method,
+          });
+        }
+        await tx.update('service_orders', {
+          'paid': depositAmount, 'deposit': depositAmount,
+        }, where: 'id=?', whereArgs: [orderId]);
+        await tx.insert('audit_log', {
+          'entity': 'payment', 'entity_id': orderId, 'action': 'DEPOSIT',
+          'detail': '$depositAmount · $storedDepositMethod', 'created_at': now,
+        });
+        await tx.insert('sync_outbox', {
+          'entity': 'payment', 'entity_id': orderId, 'operation': 'CREATE',
+          'payload': jsonEncode({
+            'amount': depositAmount, 'method': storedDepositMethod, 'folio': folio,
+            'breakdown': depositTender,
+          }),
+          'created_at': now,
+        });
       }
       return orderId;
     });
@@ -391,23 +479,69 @@ extension LocalStoreWorkshopOperations on LocalStore {
     await _outbox('evidence', id, 'CREATE', {'order_id': orderId, 'file_path': path, 'caption': caption});
   }
 
-  Future<void> addOrderPayment(int orderId, double amount, String method, {String reference = '', String notes = ''}) async {
-    if (!amount.isFinite || amount <= 0) throw ArgumentError('El importe debe ser mayor a cero y válido.');
-    if (!FinancialRules.paymentMethods.contains(method.trim().toUpperCase())) throw ArgumentError('Medio de pago no válido.');
+  Future<void> addOrderPayment(
+    int orderId,
+    double amount,
+    String method, {
+    String reference = '',
+    String notes = '',
+    List<Map<String, Object?>>? paymentBreakdown,
+  }) async {
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError('El importe debe ser mayor a cero y válido.');
+    }
+    final tender = FinancialRules.normalizePayments(
+      total: FinancialRules.money(amount),
+      fallbackMethod: method,
+      payments: paymentBreakdown,
+    );
     final now = _now();
     await db.transaction((tx) async {
-      final row = await tx.query('service_orders', columns: ['paid', 'total', 'folio'], where: 'id=?', whereArgs: [orderId], limit: 1);
-      if (row.isEmpty) throw StateError('Orden no encontrada.');
-      final orderState = await tx.query('service_orders', columns: ['status'], where: 'id=?', whereArgs: [orderId], limit: 1);
-      if (orderState.isEmpty || const {'CANCELADO', 'ENTREGADO'}.contains(orderState.first['status'])) throw StateError('No se pueden registrar pagos en una orden cerrada.');
-      final paid = (row.first['paid'] as num).toDouble();
-      final total = (row.first['total'] as num).toDouble();
-      if (amount > total - paid + 0.01) throw StateError('El pago supera el saldo pendiente.');
-      await tx.insert('payments', {'order_id': orderId, 'amount': amount, 'method': method, 'reference': reference, 'notes': notes, 'created_at': now});
-      await tx.update('service_orders', {'paid': paid + amount}, where: 'id=?', whereArgs: [orderId]);
-      await tx.insert('cash_movements', {'movement_type': 'IN', 'amount': amount, 'concept': 'Pago de reparación ${row.first['folio']}', 'reference': reference, 'created_at': now, 'related_order_id': orderId, 'payment_method': method});
-      await tx.insert('audit_log', {'entity': 'payment', 'entity_id': orderId, 'action': 'CREATE', 'detail': '$amount · $method', 'created_at': now});
-      await tx.insert('sync_outbox', {'entity': 'payment', 'entity_id': orderId, 'operation': 'CREATE', 'payload': jsonEncode({'amount': amount, 'method': method, 'reference': reference}), 'created_at': now});
+      final rows = await tx.query(
+        'service_orders',
+        columns: ['paid', 'total', 'folio', 'status'],
+        where: 'id=?', whereArgs: [orderId], limit: 1,
+      );
+      if (rows.isEmpty) throw StateError('Orden no encontrada.');
+      if (const {'CANCELADO', 'ENTREGADO'}.contains(rows.first['status'])) {
+        throw StateError('No se pueden registrar pagos en una orden cerrada.');
+      }
+      final paid = (rows.first['paid'] as num).toDouble();
+      final total = (rows.first['total'] as num).toDouble();
+      if (FinancialRules.money(amount) > total - paid + 0.01) {
+        throw StateError('El pago supera el saldo pendiente.');
+      }
+      final storedMethod = tender.length > 1 ? 'MIXTO' : tender.first['method'] as String;
+      for (final part in tender) {
+        final partMethod = part['method'] as String;
+        final partAmount = part['amount'] as double;
+        await tx.insert('payments', {
+          'order_id': orderId, 'amount': partAmount, 'method': partMethod,
+          'reference': reference.trim(), 'notes': notes.trim(), 'created_at': now,
+        });
+        await tx.insert('cash_movements', {
+          'movement_type': 'IN', 'amount': partAmount,
+          'concept': 'Pago de reparación ${rows.first['folio']}',
+          'reference': reference.trim().isEmpty ? partMethod : reference.trim(),
+          'created_at': now, 'related_order_id': orderId,
+          'payment_method': partMethod,
+        });
+      }
+      await tx.update('service_orders', {
+        'paid': FinancialRules.money(paid + amount),
+      }, where: 'id=?', whereArgs: [orderId]);
+      await tx.insert('audit_log', {
+        'entity': 'payment', 'entity_id': orderId, 'action': 'CREATE',
+        'detail': '${FinancialRules.money(amount)} · $storedMethod', 'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'payment', 'entity_id': orderId, 'operation': 'CREATE',
+        'payload': jsonEncode({
+          'amount': FinancialRules.money(amount), 'method': storedMethod,
+          'breakdown': tender, 'reference': reference.trim(),
+        }),
+        'created_at': now,
+      });
     });
   }
 

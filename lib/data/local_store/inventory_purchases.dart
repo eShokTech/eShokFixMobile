@@ -41,6 +41,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
   }
 
   Future<void> adjustInventory(int itemId, double quantity, String reason) async {
+    if (!quantity.isFinite) throw ArgumentError('La cantidad debe ser un número válido.');
     if (quantity == 0) return;
     if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo del movimiento.');
     await db.transaction((tx) async {
@@ -54,10 +55,6 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
       await tx.insert('audit_log', {'entity': 'inventory_item', 'entity_id': itemId, 'action': 'STOCK_ADJUST', 'detail': '$quantity · $reason', 'created_at': now});
       await tx.insert('sync_outbox', {'entity': 'inventory_item', 'entity_id': itemId, 'operation': 'STOCK_ADJUST', 'payload': jsonEncode({'quantity': quantity, 'reason': reason}), 'created_at': now});
     });
-  }
-
-  Future<void> _inventoryMovement(int itemId, double quantity, String type, String reason) async {
-    await db.insert('inventory_movements', {'item_id': itemId, 'movement_type': type, 'quantity': quantity.abs(), 'reason': reason, 'created_at': _now()});
   }
 
   Future<List<Map<String, Object?>>> suppliers({String query = ''}) {
