@@ -924,11 +924,12 @@ class _SaleDialogState extends State<SaleDialog> {
         break;
       }
     }
+    final chosen = selected;
     setState(() {
       line.itemId = selectedId;
-      if (selected != null) {
-        line.description.text = _str(selected['name']);
-        line.unitPrice.text = _num(selected['price']).toStringAsFixed(2);
+      if (chosen != null) {
+        line.description.text = _str(chosen['name']);
+        line.unitPrice.text = _num(chosen['price']).toStringAsFixed(2);
       }
     });
   }
@@ -954,7 +955,7 @@ class _SaleDialogState extends State<SaleDialog> {
           'unit_price': _value(line.unitPrice),
         }).toList(),
         paymentMethod: method,
-        discount: _value(discount),
+        discount: double.tryParse(discount.text.trim().replaceAll(',', '.')) ?? 0,
         notes: notes.text,
       );
       if (mounted) Navigator.pop(context, true);
@@ -972,7 +973,8 @@ class _SaleDialogState extends State<SaleDialog> {
       content: SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
     );
 
-    final total = PurchaseAccounting.total(_subtotal, double.tryParse(discount.text) ?? 0);
+    final discountValue = double.tryParse(discount.text.trim().replaceAll(',', '.')) ?? 0;
+    final total = PurchaseAccounting.total(_subtotal, discountValue);
     return AlertDialog(
       scrollable: true,
       title: const Text('Nueva venta'),
@@ -1674,8 +1676,8 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
       double.tryParse(controller.text.trim()) ?? -1;
 
   double get _subtotal => _lines.fold<double>(0, (sum, line) {
-    final qty = double.tryParse(line.quantity.text.trim()) ?? 0;
-    final cost = double.tryParse(line.unitCost.text.trim()) ?? 0;
+    final qty = double.tryParse(line.quantity.text.trim().replaceAll(',', '.')) ?? 0;
+    final cost = double.tryParse(line.unitCost.text.trim().replaceAll(',', '.')) ?? 0;
     return sum + PurchaseAccounting.lineTotal(qty, cost);
   });
 
