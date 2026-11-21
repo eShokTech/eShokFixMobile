@@ -32,6 +32,21 @@ Future<void> _recordInventoryMovement(
 }
 
 
+Future<void> _createInventoryPriceHistoryTable(DatabaseExecutor db) async {
+  await db.execute('''CREATE TABLE IF NOT EXISTS inventory_price_history(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inventory_item_id INTEGER NOT NULL,
+    old_price REAL NOT NULL,
+    new_price REAL NOT NULL,
+    changed_by INTEGER,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(inventory_item_id) REFERENCES inventory_items(id) ON DELETE CASCADE,
+    FOREIGN KEY(changed_by) REFERENCES users(id)
+  )''');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_inventory_price_history_item ON inventory_price_history(inventory_item_id, created_at DESC)');
+}
+
 Future<void> _createAppNotificationsTable(DatabaseExecutor db) async {
   await db.execute('''CREATE TABLE IF NOT EXISTS app_notifications(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -214,7 +229,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 10,
+      version: 11,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -326,6 +341,7 @@ class LocalStore {
         await _createFinancialTables(db);
         await _createOrderRefundTable(db);
         await _createAppNotificationsTable(db);
+        await _createInventoryPriceHistoryTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -384,6 +400,9 @@ class LocalStore {
         if (oldVersion < 10) {
           await _createAppNotificationsTable(db);
         }
+        if (oldVersion < 11) {
+          await _createInventoryPriceHistoryTable(db);
+        }
       },
     );
     _instance = LocalStore._(database);
@@ -427,7 +446,7 @@ class LocalStore {
       if (check != 'ok') throw StateError('La copia no pasó la verificación de integridad de SQLite.');
       final versionRows = await verification.rawQuery('PRAGMA user_version');
       final version = (versionRows.first.values.first as num).toInt();
-      if (version < 1 || version > 10) {
+      if (version < 1 || version > 11) {
         throw StateError('La versión de la copia ($version) no es compatible con esta app.');
       }
       final requiredTables = await verification.rawQuery('''
