@@ -6,7 +6,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
     final q = '%${query.trim()}%';
     return db.rawQuery('SELECT * FROM inventory_items WHERE name LIKE ? OR COALESCE(sku,\'\') LIKE ? ORDER BY name COLLATE NOCASE', [q, q]);
   }
-  Future<int> saveInventoryItem({int? id, String sku = '', required String name, String category = 'General', double stock = 0, double minStock = 0, double cost = 0, double price = 0, String location = ''}) async {
+  Future<int> saveInventoryItem({int? id, String sku = '', required String name, String category = 'General', double stock = 0, double minStock = 0, double cost = 0, double price = 0, String location = '', String priceChangeReason = ''}) async {
     requirePermission('inventory.manage');
     
     
@@ -45,13 +45,28 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
       } else {
         final exists = await tx.query(
           'inventory_items',
-          columns: ['id'],
+          columns: ['id', 'price'],
           where: 'id=?',
           whereArgs: [id],
           limit: 1,
         );
         if (exists.isEmpty) throw StateError('Artículo de inventario no encontrado.');
         itemId = id;
+        final oldPrice = (exists.first['price'] as num).toDouble();
+        final newPrice = FinancialRules.money(price);
+        if ((oldPrice - newPrice).abs() >= 0.01) {
+          if (priceChangeReason.trim().isEmpty) {
+            throw ArgumentError('Indica el motivo del cambio de precio para conservar el historial.');
+          }
+          await tx.insert('inventory_price_history', {
+            'inventory_item_id': itemId,
+            'old_price': FinancialRules.money(oldPrice),
+            'new_price': newPrice,
+            'changed_by': authenticatedUser?.id,
+            'reason': priceChangeReason.trim(),
+            'created_at': now,
+          });
+        }
         await tx.update('inventory_items', data, where: 'id=?', whereArgs: [id]);
       }
       await tx.insert('audit_log', {
@@ -74,6 +89,18 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
       return itemId;
     });
   }
+  Future<List<Map<String, Object?>>> inventoryPriceHistory(int itemId) {
+    requirePermission('inventory.cost.view');
+    return db.rawQuery('''
+      SELECT h.*, u.display_name changed_by_name
+      FROM inventory_price_history h
+      LEFT JOIN users u ON u.id=h.changed_by
+      WHERE h.inventory_item_id=?
+      ORDER BY h.id DESC
+      LIMIT 100
+    ''', [itemId]);
+  }
+
   Future<void> adjustInventory(int itemId, double quantity, String reason) async {
     requirePermission('inventory.manage');
     
