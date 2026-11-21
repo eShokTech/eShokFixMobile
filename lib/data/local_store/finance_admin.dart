@@ -83,15 +83,14 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     });
   }
 
-  Future<List<Map<String, Object?>>> cashMovements() => db.query('cash_movements', orderBy: 'id DESC', limit: 100);
-  Future<List<Map<String, Object?>>> cashCuts() => db.query('cash_cuts', orderBy: 'id DESC', limit: 30);
-  Future<List<Map<String, Object?>>> warranties() => db.rawQuery('''SELECT w.*, o.folio, c.name client_name, d.brand, d.model FROM warranties w
-    JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id LEFT JOIN devices d ON d.id=o.device_id ORDER BY w.id DESC''');
+  Future<List<Map<String, Object?>>> cashMovements() { requirePermission('cash.view'); return db.query('cash_movements', orderBy: 'id DESC', limit: 100); }
+  Future<List<Map<String, Object?>>> cashCuts() { requirePermission('cash.view'); return db.query('cash_cuts', orderBy: 'id DESC', limit: 30); }
+  Future<List<Map<String, Object?>>> warranties() { requirePermission('warranties.view'); return db.rawQuery('''SELECT w.*, o.folio, c.name client_name, d.brand, d.model FROM warranties w
+    JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id LEFT JOIN devices d ON d.id=o.device_id ORDER BY w.id DESC'''); }
 
   Future<Map<String, double>> reportTotals() async {
     requirePermission('reports.view');
     requirePermission('warranties.view');
-    requirePermission('cash.view');
     requirePermission('cash.view');
     final orders = await db.rawQuery("SELECT COALESCE(SUM(total),0) total, COALESCE(SUM(paid),0) paid, COUNT(*) count FROM service_orders WHERE status!='CANCELADO'");
     final sales = await db.rawQuery("SELECT COALESCE(SUM(total - COALESCE(refunded_total,0)),0) total, SUM(CASE WHEN status!='VOID' THEN 1 ELSE 0 END) count FROM sales");
@@ -109,7 +108,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     await db.insert('settings', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<List<Map<String, Object?>>> whatsappEvents() => db.rawQuery('''SELECT w.*, o.folio, c.name client_name FROM whatsapp_events w JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id ORDER BY w.id DESC''');
+  Future<List<Map<String, Object?>>> whatsappEvents() { requirePermission('users.manage'); return db.rawQuery('''SELECT w.*, o.folio, c.name client_name FROM whatsapp_events w JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id ORDER BY w.id DESC'''); }
 
   Future<Map<String, int>> demoDataCounts() async {
     requirePermission('settings.manage');
