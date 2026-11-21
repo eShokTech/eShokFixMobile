@@ -46,7 +46,7 @@ class AuthService {
     'ENCARGADO': {
       'dashboard.view', 'clients.view', 'clients.manage', 'clients.delete', 'orders.cancel',
       'orders.view', 'orders.manage', 'orders.authorize', 'orders.pay', 'orders.payments.view',
-      'inventory.view', 'inventory.manage', 'sales.view', 'sales.manage',
+      'inventory.view', 'inventory.manage', 'inventory.cost.view', 'sales.view', 'sales.manage',
       'cash.view', 'cash.manage', 'purchases.view', 'purchases.manage',
       'warranties.view', 'reports.view', 'settings.read', 'settings.view', 'settings.manage', 'users.manage',
     },
