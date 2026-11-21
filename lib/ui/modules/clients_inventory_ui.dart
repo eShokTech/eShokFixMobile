@@ -187,7 +187,7 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
     ),
     if (pricingMethod != ProductPricingRules.directCost) ...[
       const SizedBox(height: 8),
-      _field(pricingValue, pricingMethod == ProductPricingRules.fixedProfit ? 'Ganancia fija ($)' : 'Porcentaje (%)', number: true, onChanged: (_) => setState(() {})),
+      _field(pricingValue, pricingMethod == ProductPricingRules.fixedProfit ? 'Ganancia fija (\$)' : 'Porcentaje (%)', number: true, onChanged: (_) => setState(() {})),
     ],
     const SizedBox(height: 7),
     Text(pricingHelp, style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
