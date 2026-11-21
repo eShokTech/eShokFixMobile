@@ -3,6 +3,50 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import '../domain/workflow.dart';
 
+Future<void> _createPurchaseTables(DatabaseExecutor db) async {
+  await db.execute('''CREATE TABLE suppliers(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    phone TEXT DEFAULT '',
+    whatsapp TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    tax_id TEXT DEFAULT '',
+    address TEXT DEFAULT '',
+    notes TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )''');
+  await db.execute('''CREATE TABLE purchases(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    folio TEXT UNIQUE NOT NULL,
+    supplier_id INTEGER NOT NULL,
+    subtotal REAL NOT NULL,
+    discount REAL NOT NULL DEFAULT 0,
+    total REAL NOT NULL,
+    paid REAL NOT NULL DEFAULT 0,
+    payment_status TEXT NOT NULL DEFAULT 'PENDIENTE',
+    payment_method TEXT NOT NULL DEFAULT 'EFECTIVO',
+    notes TEXT DEFAULT '',
+    received_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(supplier_id) REFERENCES suppliers(id)
+  )''');
+  await db.execute('''CREATE TABLE purchase_items(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    purchase_id INTEGER NOT NULL,
+    item_id INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    quantity REAL NOT NULL,
+    unit_cost REAL NOT NULL,
+    line_total REAL NOT NULL,
+    FOREIGN KEY(purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
+    FOREIGN KEY(item_id) REFERENCES inventory_items(id)
+  )''');
+  await db.execute('CREATE INDEX idx_purchases_supplier ON purchases(supplier_id)');
+  await db.execute('CREATE INDEX idx_purchases_created ON purchases(created_at)');
+  await db.execute('CREATE INDEX idx_purchase_items_purchase ON purchase_items(purchase_id)');
+}
+
 class LocalStore {
   LocalStore._(this.db);
   final Database db;
@@ -13,7 +57,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 1,
+      version: 2,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -107,6 +151,12 @@ class LocalStore {
         batch.execute('CREATE INDEX idx_cash_created ON cash_movements(created_at)');
         batch.execute('CREATE INDEX idx_outbox_state ON sync_outbox(sync_state)');
         await batch.commit(noResult: true);
+        await _createPurchaseTables(db);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await _createPurchaseTables(db);
+        }
       },
     );
     _instance = LocalStore._(database);
@@ -347,6 +397,209 @@ class LocalStore {
 
   Future<void> _inventoryMovement(int itemId, double quantity, String type, String reason) async {
     await db.insert('inventory_movements', {'item_id': itemId, 'movement_type': type, 'quantity': quantity.abs(), 'reason': reason, 'created_at': _now()});
+  }
+
+  Future<List<Map<String, Object?>>> suppliers({String query = ''}) {
+    final q = '%${query.trim()}%';
+    return db.query('suppliers',
+      where: "name LIKE ? OR COALESCE(phone,'') LIKE ? OR COALESCE(tax_id,'') LIKE ?",
+      whereArgs: [q, q, q], orderBy: 'name COLLATE NOCASE');
+  }
+
+  Future<int> saveSupplier({
+    int? id,
+    required String name,
+    String phone = '',
+    String whatsapp = '',
+    String email = '',
+    String taxId = '',
+    String address = '',
+    String notes = '',
+  }) async {
+    if (name.trim().isEmpty) throw ArgumentError('El nombre del proveedor es obligatorio.');
+    final now = _now();
+    final data = {
+      'name': name.trim(), 'phone': phone.trim(), 'whatsapp': whatsapp.trim(),
+      'email': email.trim(), 'tax_id': taxId.trim(), 'address': address.trim(),
+      'notes': notes.trim(), 'updated_at': now,
+    };
+    final supplierId = id == null
+        ? await db.insert('suppliers', {...data, 'created_at': now})
+        : id;
+    if (id != null) await db.update('suppliers', data, where: 'id=?', whereArgs: [id]);
+    await _audit('supplier', supplierId, id == null ? 'CREATE' : 'UPDATE', name.trim());
+    await _outbox('supplier', supplierId, id == null ? 'CREATE' : 'UPDATE', data);
+    return supplierId;
+  }
+
+  Future<List<Map<String, Object?>>> purchases({String query = ''}) async {
+    final q = '%${query.trim()}%';
+    return db.rawQuery('''SELECT p.*, s.name supplier_name,
+      (SELECT COUNT(*) FROM purchase_items pi WHERE pi.purchase_id=p.id) item_count
+      FROM purchases p JOIN suppliers s ON s.id=p.supplier_id
+      WHERE p.folio LIKE ? OR s.name LIKE ?
+      ORDER BY p.id DESC''', [q, q]);
+  }
+
+  Future<List<Map<String, Object?>>> purchaseItems(int purchaseId) =>
+      db.rawQuery('''SELECT pi.*, i.sku FROM purchase_items pi
+      JOIN inventory_items i ON i.id=pi.item_id
+      WHERE pi.purchase_id=? ORDER BY pi.id''', [purchaseId]);
+
+  Future<int> createPurchase({
+    required int supplierId,
+    required List<Map<String, Object?>> items,
+    double discount = 0,
+    double paid = 0,
+    String paymentMethod = 'EFECTIVO',
+    String notes = '',
+  }) async {
+    if (items.isEmpty) throw ArgumentError('Agrega al menos un artículo a la compra.');
+    if (discount < 0 || paid < 0) throw ArgumentError('Descuento y pago no pueden ser negativos.');
+    final prepared = <Map<String, Object?>>[];
+    var subtotal = 0.0;
+    for (final line in items) {
+      final itemId = line['item_id'];
+      final quantityValue = line['quantity'];
+      final costValue = line['unit_cost'];
+      if (itemId is! int || quantityValue is! num || costValue is! num) {
+        throw ArgumentError('Cada partida necesita artículo, cantidad y costo válidos.');
+      }
+      final quantity = quantityValue.toDouble();
+      final unitCost = costValue.toDouble();
+      if (quantity <= 0 || unitCost < 0) {
+        throw ArgumentError('La cantidad debe ser mayor a cero y el costo no puede ser negativo.');
+      }
+      final lineTotal = PurchaseAccounting.lineTotal(quantity, unitCost);
+      subtotal += lineTotal;
+      prepared.add({
+        'item_id': itemId,
+        'quantity': quantity,
+        'unit_cost': unitCost,
+        'line_total': lineTotal,
+      });
+    }
+    if (discount > subtotal) throw ArgumentError('El descuento no puede superar el subtotal.');
+    final total = PurchaseAccounting.total(subtotal, discount);
+    if (paid > total) throw ArgumentError('El pago inicial no puede superar el total de la compra.');
+    final now = _now();
+
+    return db.transaction((tx) async {
+      final supplier = await tx.query('suppliers', columns: ['id'],
+        where: 'id=?', whereArgs: [supplierId], limit: 1);
+      if (supplier.isEmpty) throw StateError('El proveedor seleccionado ya no existe.');
+      for (final line in prepared) {
+        final stockItem = await tx.query('inventory_items',
+          columns: ['id', 'name', 'stock'],
+          where: 'id=?', whereArgs: [line['item_id']], limit: 1);
+        if (stockItem.isEmpty) throw StateError('Uno de los artículos ya no existe en inventario.');
+      }
+      final purchaseId = await tx.insert('purchases', {
+        'folio': 'PENDING-${DateTime.now().microsecondsSinceEpoch}',
+        'supplier_id': supplierId,
+        'subtotal': subtotal,
+        'discount': discount,
+        'total': total,
+        'paid': paid,
+        'payment_status': PurchaseAccounting.paymentStatus(total, paid),
+        'payment_method': paymentMethod,
+        'notes': notes.trim(),
+        'received_at': now,
+        'created_at': now,
+      });
+      final folio = _moneyFolio('CP', purchaseId);
+      await tx.update('purchases', {'folio': folio},
+        where: 'id=?', whereArgs: [purchaseId]);
+
+      for (final line in prepared) {
+        final itemId = line['item_id'] as int;
+        final current = await tx.query('inventory_items',
+          columns: ['stock', 'name'],
+          where: 'id=?', whereArgs: [itemId], limit: 1);
+        final oldStock = (current.first['stock'] as num).toDouble();
+        final quantity = line['quantity'] as double;
+        final unitCost = line['unit_cost'] as double;
+        final newStock = oldStock + quantity;
+        await tx.update('inventory_items', {
+          'stock': newStock, 'cost': unitCost, 'updated_at': now,
+        }, where: 'id=?', whereArgs: [itemId]);
+        await tx.insert('purchase_items', {
+          'purchase_id': purchaseId, 'item_id': itemId,
+          'description': current.first['name'],
+          'quantity': quantity, 'unit_cost': unitCost,
+          'line_total': line['line_total'],
+        });
+        await tx.insert('inventory_movements', {
+          'item_id': itemId, 'movement_type': 'IN',
+          'quantity': quantity, 'reason': 'Compra $folio',
+          'created_at': now,
+        });
+      }
+      if (paid > 0) {
+        await tx.insert('cash_movements', {
+          'movement_type': 'OUT', 'amount': paid,
+          'concept': 'Pago de compra $folio', 'reference': paymentMethod,
+          'created_at': now,
+        });
+      }
+      await tx.insert('audit_log', {
+        'entity': 'purchase', 'entity_id': purchaseId,
+        'action': 'CREATE', 'detail': '$folio · $total',
+        'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'purchase', 'entity_id': purchaseId,
+        'operation': 'CREATE',
+        'payload': jsonEncode({
+          'folio': folio, 'supplier_id': supplierId,
+          'subtotal': subtotal, 'discount': discount,
+          'total': total, 'paid': paid, 'items': prepared,
+        }),
+        'created_at': now,
+      });
+      return purchaseId;
+    });
+  }
+
+  Future<void> recordPurchasePayment(
+    int purchaseId, double amount, String method, {String reference = ''}
+  ) async {
+    if (amount <= 0) throw ArgumentError('El pago debe ser mayor a cero.');
+    final now = _now();
+    await db.transaction((tx) async {
+      final rows = await tx.query('purchases',
+        columns: ['folio', 'total', 'paid'],
+        where: 'id=?', whereArgs: [purchaseId], limit: 1);
+      if (rows.isEmpty) throw StateError('Compra no encontrada.');
+      final total = (rows.first['total'] as num).toDouble();
+      final paid = (rows.first['paid'] as num).toDouble();
+      if (amount > PurchaseAccounting.balance(total, paid) + 0.01) {
+        throw StateError('El pago supera el saldo pendiente de la compra.');
+      }
+      final newPaid = paid + amount;
+      await tx.update('purchases', {
+        'paid': newPaid,
+        'payment_status': PurchaseAccounting.paymentStatus(total, newPaid),
+        'payment_method': method,
+      }, where: 'id=?', whereArgs: [purchaseId]);
+      await tx.insert('cash_movements', {
+        'movement_type': 'OUT', 'amount': amount,
+        'concept': 'Abono a compra ${rows.first['folio']}',
+        'reference': reference.trim().isEmpty ? method : reference.trim(),
+        'created_at': now,
+      });
+      await tx.insert('audit_log', {
+        'entity': 'purchase', 'entity_id': purchaseId,
+        'action': 'PAYMENT', 'detail': '$amount · $method',
+        'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'purchase', 'entity_id': purchaseId,
+        'operation': 'PAYMENT',
+        'payload': jsonEncode({'amount': amount, 'method': method, 'reference': reference}),
+        'created_at': now,
+      });
+    });
   }
 
   Future<List<Map<String, Object?>>> sales() => db.rawQuery('''SELECT s.*, c.name client_name FROM sales s LEFT JOIN clients c ON c.id=s.client_id ORDER BY s.id DESC LIMIT 100''');
