@@ -159,6 +159,9 @@ class AuthService {
     final now = DateTime.now();
     final token = _randomToken();
     await db.transaction((tx) async {
+      await tx.update('auth_sessions', {
+        'revoked_at': now.toIso8601String(),
+      }, where: 'user_id=? AND revoked_at IS NULL', whereArgs: [row['id']]);
       await tx.update('users', {
         'failed_attempts': 0,
         'locked_until': null,
@@ -281,7 +284,7 @@ class AuthService {
       'role': role.toUpperCase(),
       'active': active ? 1 : 0,
     }, where: 'id=?', whereArgs: [id]);
-    if (!active) {
+    if (!active || rows.first['role'] != role.toUpperCase()) {
       await db.update('auth_sessions',
           {'revoked_at': DateTime.now().toIso8601String()},
           where: 'user_id=? AND revoked_at IS NULL', whereArgs: [id]);
@@ -327,6 +330,8 @@ class AuthService {
         !can(row['role'] as String, permission)) {
       throw StateError('No tienes permiso para realizar esta operación o tu sesión expiró.');
     }
+    await db.update('auth_sessions', {'last_seen_at': now.toIso8601String()},
+        where: 'token_hash=? AND revoked_at IS NULL', whereArgs: [digest]);
   }
 
   void _validateCredentials(String username, String displayName, String password) {
