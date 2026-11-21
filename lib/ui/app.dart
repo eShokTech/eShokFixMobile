@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import '../data/local_store.dart';
 import '../domain/workflow.dart';
+import '../domain/financial_rules.dart';
 import 'theme.dart';
 
 String _str(Object? v, [String fallback = '']) => v == null ? fallback : '$v';

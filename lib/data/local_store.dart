@@ -925,28 +925,15 @@ class LocalStore {
   Future<List<Map<String, Object?>>> purchaseReturns(int purchaseId) => db.query(
     'purchase_returns', where: 'purchase_id=?', whereArgs: [purchaseId], orderBy: 'id DESC');
   Future<void> createSale({int? itemId, required String description, required double quantity, required double unitPrice, required String paymentMethod, double discount = 0, String notes = ''}) async {
-    if (quantity <= 0 || unitPrice < 0 || discount < 0 || discount > quantity * unitPrice) throw ArgumentError('Revisa cantidad, importe y descuento.');
-    final now = _now();
-    await db.transaction((tx) async {
-      if (itemId != null) {
-        final items = await tx.query('inventory_items', columns: ['stock','name'], where: 'id=?', whereArgs: [itemId], limit: 1);
-        if (items.isEmpty || (items.first['stock'] as num).toDouble() < quantity) throw StateError('Existencia insuficiente.');
-        await tx.update('inventory_items', {'stock': (items.first['stock'] as num).toDouble() - quantity, 'updated_at': now}, where: 'id=?', whereArgs: [itemId]);
-        await tx.insert('inventory_movements', {'item_id': itemId, 'movement_type': 'OUT', 'quantity': quantity, 'reason': 'Venta POS', 'created_at': now});
-      }
-      final subtotal = quantity * unitPrice;
-      final total = (subtotal - discount).clamp(0, double.infinity).toDouble();
-      final saleId = await tx.insert('sales', {'folio': 'PENDING-${DateTime.now().microsecondsSinceEpoch}', 'client_id': null, 'subtotal': subtotal, 'discount': discount, 'total': total, 'payment_method': storedMethod,
-        'amount_paid': total,
-        'status': 'COMPLETED',
-        'refunded_total': 0, 'notes': notes, 'created_at': now});
-      final folio = _moneyFolio('PV', saleId);
-      await tx.update('sales', {'folio': folio}, where: 'id=?', whereArgs: [saleId]);
-      await tx.insert('sale_items', {'sale_id': saleId, 'item_id': itemId, 'description': description, 'quantity': quantity, 'unit_price': unitPrice, 'line_total': subtotal});
-      await tx.insert('cash_movements', {'movement_type': 'IN', 'amount': total, 'concept': 'Venta POS $folio', 'reference': paymentMethod, 'payment_method': paymentMethod, 'created_at': now, 'related_sale_id': saleId});
-      await tx.insert('audit_log', {'entity': 'sale', 'entity_id': saleId, 'action': 'CREATE', 'detail': '$folio · $total', 'created_at': now});
-      await tx.insert('sync_outbox', {'entity': 'sale', 'entity_id': saleId, 'operation': 'CREATE', 'payload': jsonEncode({'folio': folio, 'total': total, 'method': paymentMethod}), 'created_at': now});
-    });
+    await createSaleCart(
+      items: [{
+        'item_id': itemId, 'description': description,
+        'quantity': quantity, 'unit_price': unitPrice,
+      }],
+      paymentMethod: paymentMethod,
+      discount: discount,
+      notes: notes,
+    );
   }
 
   Future<List<Map<String, Object?>>> saleItems(int saleId) =>
@@ -1032,8 +1019,10 @@ class LocalStore {
         'subtotal': subtotal,
         'discount': discount,
         'total': total,
-        'payment_method': paymentMethod,
+        'payment_method': storedMethod,
         'amount_paid': total,
+        'status': 'COMPLETED',
+        'refunded_total': 0,
         'notes': notes.trim(),
         'created_at': now,
       });
@@ -1109,14 +1098,22 @@ class LocalStore {
       final returned = (row['returned_quantity'] as num).toDouble();
       final remaining = FinancialRules.remainingQuantity(sold, returned);
       if (quantity > remaining + 0.000001) throw StateError('La cantidad supera lo que queda por devolver.');
-      final amount = FinancialRules.saleLineRefund(
+      final alreadyRefunded = (row['refunded_total'] as num).toDouble();
+      final saleTotal = (row['sale_total'] as num).toDouble();
+      final otherOpenLines = Sqflite.firstIntValue(await tx.rawQuery('''
+        SELECT COUNT(*) FROM sale_items
+        WHERE sale_id=? AND id!=? AND returned_quantity < quantity - 0.000001
+      ''', [saleId, saleItemId])) ?? 0;
+      final closesLastLine = quantity >= remaining - 0.000001 && otherOpenLines == 0;
+      final calculatedAmount = FinancialRules.saleLineRefund(
         quantity: quantity,
         unitPrice: (row['unit_price'] as num).toDouble(),
         saleSubtotal: (row['sale_subtotal'] as num).toDouble(),
-        saleTotal: (row['sale_total'] as num).toDouble(),
+        saleTotal: saleTotal,
       );
-      final alreadyRefunded = (row['refunded_total'] as num).toDouble();
-      final saleTotal = (row['sale_total'] as num).toDouble();
+      final amount = closesLastLine
+          ? FinancialRules.money(saleTotal - alreadyRefunded)
+          : calculatedAmount;
       if (alreadyRefunded + amount > saleTotal + 0.01) throw StateError('El reembolso superaría el total cobrado.');
       final returnId = await tx.insert('sale_returns', {
         'sale_id': saleId, 'amount': amount, 'refund_method': method,
@@ -1176,7 +1173,7 @@ class LocalStore {
     final now = _now();
     await db.transaction((tx) async {
       final rows = await tx.query('sales',
-        columns: ['folio', 'total', 'refunded_total', 'status'],
+        columns: ['folio', 'subtotal', 'total', 'refunded_total', 'status'],
         where: 'id=?', whereArgs: [saleId], limit: 1);
       if (rows.isEmpty) throw StateError('Venta no encontrada.');
       final sale = rows.first;
@@ -1190,13 +1187,31 @@ class LocalStore {
         'sale_id': saleId, 'amount': refund, 'refund_method': method,
         'reason': reason.trim(), 'created_at': now,
       });
-      for (final line in lines) {
+      var allocatedRefund = 0.0;
+      for (var index = 0; index < lines.length; index++) {
+        final line = lines[index];
         final quantity = (line['quantity'] as num).toDouble();
         final returned = (line['returned_quantity'] as num).toDouble();
         final remaining = FinancialRules.remainingQuantity(quantity, returned);
         if (remaining <= 0) continue;
+        final lineRefund = FinancialRules.saleLineRefund(
+          quantity: remaining,
+          unitPrice: (line['unit_price'] as num).toDouble(),
+          saleSubtotal: (rows.first['subtotal'] as num).toDouble(),
+          saleTotal: total,
+        );
+        final isLastRemainingLine = !lines.skip(index + 1).any((candidate) =>
+          FinancialRules.remainingQuantity(
+            (candidate['quantity'] as num).toDouble(),
+            (candidate['returned_quantity'] as num).toDouble(),
+          ) > 0);
+        final allocatedLineRefund = isLastRemainingLine
+          ? FinancialRules.money(refund - allocatedRefund)
+          : lineRefund;
+        allocatedRefund += allocatedLineRefund;
         await tx.insert('sale_return_items', {
-          'return_id': returnId, 'sale_item_id': line['id'], 'quantity': remaining, 'amount': 0,
+          'return_id': returnId, 'sale_item_id': line['id'],
+          'quantity': remaining, 'amount': allocatedLineRefund,
         });
         final itemId = line['item_id'];
         if (itemId is int) {
@@ -1248,7 +1263,7 @@ class LocalStore {
     final now = _now();
     await db.transaction((tx) async {
       final rows = await tx.rawQuery('''SELECT pi.*, i.stock,
-          p.folio, p.total purchase_total, p.paid purchase_paid
+          p.folio, p.subtotal purchase_subtotal, p.total purchase_total, p.paid purchase_paid
         FROM purchase_items pi JOIN purchases p ON p.id=pi.purchase_id
         JOIN inventory_items i ON i.id=pi.item_id
         WHERE pi.id=? AND pi.purchase_id=?''', [purchaseItemId, purchaseId]);
@@ -1261,7 +1276,12 @@ class LocalStore {
       final stock = (row['stock'] as num).toDouble();
       if (stock + 0.000001 < quantity) throw StateError('No hay existencias suficientes para devolver esta cantidad al proveedor.');
       final unitCost = (row['unit_cost'] as num).toDouble();
-      final amount = FinancialRules.money(quantity * unitCost);
+      final amount = FinancialRules.saleLineRefund(
+        quantity: quantity,
+        unitPrice: unitCost,
+        saleSubtotal: (row['purchase_subtotal'] as num).toDouble(),
+        saleTotal: (row['purchase_total'] as num).toDouble(),
+      );
       final oldTotal = (row['purchase_total'] as num).toDouble();
       final oldPaid = (row['purchase_paid'] as num).toDouble();
       final newTotal = FinancialRules.money((oldTotal - amount).clamp(0.0, double.infinity).toDouble());
@@ -1382,7 +1402,7 @@ class LocalStore {
       });
       await tx.insert('sync_outbox', {
         'entity': 'cash_cut', 'entity_id': id, 'operation': 'CREATE',
-        'payload': {'expected': expected, 'counted': counted, 'difference': difference},
+        'payload': jsonEncode({'expected': expected, 'counted': counted, 'difference': difference}),
         'created_at': now,
       });
     });
