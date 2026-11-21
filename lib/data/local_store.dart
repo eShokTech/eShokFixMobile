@@ -680,7 +680,6 @@ class LocalStore {
   Future<List<Map<String, Object?>>> whatsappEvents() => db.rawQuery('''SELECT w.*, o.folio, c.name client_name FROM whatsapp_events w JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id ORDER BY w.id DESC''');
 
   Future<Map<String, int>> demoDataCounts() async {
-    int count(String table) => 0;
     final clientsCount = Sqflite.firstIntValue(
       await db.rawQuery('SELECT COUNT(*) FROM clients WHERE is_demo=1'),
     ) ?? 0;
