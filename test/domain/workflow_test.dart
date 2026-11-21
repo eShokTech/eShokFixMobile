@@ -5,7 +5,8 @@ void main() {
   group('OrderWorkflow', () {
     test('allows the normal repair lifecycle', () {
       expect(OrderWorkflow.canTransition('RECIBIDO', 'DIAGNOSTICO'), isTrue);
-      expect(OrderWorkflow.canTransition('DIAGNOSTICO', 'REPARACION'), isTrue);
+      expect(OrderWorkflow.canTransition('DIAGNOSTICO', 'ESPERA_AUTORIZACION'), isTrue);
+      expect(OrderWorkflow.canTransition('ESPERA_AUTORIZACION', 'REPARACION'), isTrue);
       expect(OrderWorkflow.canTransition('REPARACION', 'PRUEBAS'), isTrue);
       expect(OrderWorkflow.canTransition('PRUEBAS', 'LISTO'), isTrue);
       expect(OrderWorkflow.canTransition('LISTO', 'ENTREGADO'), isTrue);
@@ -13,6 +14,8 @@ void main() {
 
     test('blocks skipping required workflow steps', () {
       expect(OrderWorkflow.canTransition('RECIBIDO', 'LISTO'), isFalse);
+      expect(OrderWorkflow.canTransition('DIAGNOSTICO', 'REPARACION'), isFalse);
+      expect(OrderWorkflow.canTransition('DIAGNOSTICO', 'ESPERA_REFACCION'), isFalse);
       expect(OrderWorkflow.canTransition('DIAGNOSTICO', 'ENTREGADO'), isFalse);
       expect(OrderWorkflow.canTransition('ENTREGADO', 'REPARACION'), isFalse);
     });
