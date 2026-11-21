@@ -3,6 +3,7 @@ part of '../local_store.dart';
 extension LocalStoreWorkshopOperations on LocalStore {
   Future<Map<String, Object?>> dashboard() async {
     requirePermission('dashboard.view');
+    
 
     final active = Sqflite.firstIntValue(await db.rawQuery("SELECT COUNT(*) FROM service_orders WHERE status NOT IN ('ENTREGADO','CANCELADO')")) ?? 0;
     final ready = Sqflite.firstIntValue(await db.rawQuery("SELECT COUNT(*) FROM service_orders WHERE status='LISTO'")) ?? 0;
@@ -22,6 +23,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
 
   Future<List<Map<String, Object?>>> clients({String query = ''}) async {
     requirePermission('clients.view');
+    
 
     final q = '%${query.trim()}%';
     return db.rawQuery('''SELECT c.*, (SELECT COUNT(*) FROM devices d WHERE d.client_id=c.id) device_count,
@@ -32,6 +34,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
 
   Future<int> saveClient({int? id, required String name, String phone = '', String whatsapp = '', String email = '', String address = '', String notes = ''}) async {
     requirePermission('clients.manage');
+    
 
     if (name.trim().isEmpty) throw ArgumentError('El nombre del cliente es obligatorio.');
     final now = _now();
@@ -51,6 +54,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
 
   Future<void> deleteClient(int id) async {
     requirePermission('clients.manage');
+    
 
     await db.transaction((tx) async {
       final client = await tx.query('clients', columns: ['id', 'name'],
@@ -81,7 +85,8 @@ extension LocalStoreWorkshopOperations on LocalStore {
 
   Future<List<Map<String, Object?>>> orders({String query = '', String status = ''}) async {
     requirePermission('orders.view');
-    requirePermission('clients.view');
+    
+    
 
 
     final filters = <String>[];
@@ -99,6 +104,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
 
   Future<Map<String, Object?>?> order(int id) async {
     requirePermission('orders.view');
+    
 
     final rows = await db.rawQuery('''SELECT o.*, c.name client_name, c.phone client_phone, c.whatsapp,
       d.brand, d.model, d.color, d.imei, d.serial, d.accessories, d.condition_note
@@ -106,7 +112,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     return rows.isEmpty ? null : rows.first;
   }
 
-  Future<int> createOrder({
+  Future<int> createOrder({ requirePermission('orders.manage');
     required int clientId,
     required String brand,
     required String model,
@@ -124,7 +130,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     String serial = '',
     int warrantyDays = 30,
   }) async {
-    requirePermission('orders.manage');
+    
 
     final inputs = [labor, parts, discount, deposit];
     if (inputs.any((value) => !value.isFinite) ||
@@ -238,7 +244,8 @@ extension LocalStoreWorkshopOperations on LocalStore {
     double? unitPrice,
   }) async {
     requirePermission('orders.manage');
-    requirePermission('orders.view');
+    
+    
 
 
     if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad debe ser mayor a cero y válida.');
@@ -337,6 +344,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     String note = '',
   }) async {
     requirePermission('orders.authorize');
+    
 
     if (authorizedBy.trim().isEmpty) {
       throw ArgumentError('Registra quién autorizó el servicio.');
@@ -397,6 +405,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
 
   Future<void> updateDiagnosis(int id, String diagnosis, String notes) async {
     requirePermission('orders.manage');
+    
 
     final now = _now();
     await db.transaction((tx) async {
@@ -429,6 +438,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
 
   Future<void> setOrderStatus(int id, String next, {String note = ''}) async {
     requirePermission('orders.manage');
+    
 
     if (next == 'CANCELADO') {
       throw StateError('Usa la acción Cancelar orden para registrar motivo y reembolso.');
@@ -478,8 +488,9 @@ extension LocalStoreWorkshopOperations on LocalStore {
     required String reason,
   }) async {
     requirePermission('orders.manage');
-    requirePermission('orders.pay');
-    requirePermission('orders.pay');
+    
+    
+    
 
 
     if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de cancelación.');
@@ -548,8 +559,9 @@ extension LocalStoreWorkshopOperations on LocalStore {
   Future<List<Map<String, Object?>>> orderEvidence(int id) { requirePermission('orders.view'); return db.query('evidences', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }
   Future<void> addEvidence(int orderId, String path, String caption) async {
     requirePermission('orders.manage');
-    requirePermission('orders.view');
-    requirePermission('orders.view');
+    
+    
+    
 
 
     final now = _now();
@@ -567,6 +579,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     List<Map<String, Object?>>? paymentBreakdown,
   }) async {
     requirePermission('orders.pay');
+    
 
     if (!amount.isFinite || amount <= 0) {
       throw ArgumentError('El importe debe ser mayor a cero y válido.');
