@@ -40,6 +40,7 @@ void main() {
     await store.saveInventoryItem(
       id: itemId, name: 'Pantalla de prueba', sku: 'TEST-DISPLAY',
       stock: 999, cost: 40, price: 105,
+      priceChangeReason: 'Ajuste de precio en prueba',
     );
     final preSaleInventory = await store.inventory(query: 'Pantalla de prueba');
     expect(preSaleInventory.single['stock'], 5);
