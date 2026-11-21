@@ -1244,6 +1244,25 @@ class _SaleDialogState extends State<SaleDialog> {
               style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
           ),
         ],
+        if (splitPayment) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: _field(splitAmount, 'Importe segundo pago', number: true)),
+            const SizedBox(width: 8),
+            Expanded(child: DropdownButtonFormField<String>(
+              initialValue: secondPaymentMethod,
+              decoration: const InputDecoration(labelText: 'Segundo medio'),
+              items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+                .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+              onChanged: (value) => setState(() => secondPaymentMethod = value ?? secondPaymentMethod),
+            )),
+          ]),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text('Primer pago: ${_money((double.tryParse(paid.text.replaceAll(',', '.')) ?? 0) - (double.tryParse(splitAmount.text.replaceAll(',', '.')) ?? 0))}',
+              style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+          ),
+        ],
         const SizedBox(height: 8),
         _field(notes, 'Notas / referencia'),
         const SizedBox(height: 12),
@@ -1275,12 +1294,14 @@ class SaleDetailDialog extends StatefulWidget {
 
 class _SaleDetailDialogState extends State<SaleDetailDialog> {
   late Future<List<Map<String, Object?>>> _items;
+  late Future<List<Map<String, Object?>>> _payments;
   bool saving = false;
 
   @override
   void initState() {
     super.initState();
     _items = widget.store.saleItems(widget.sale['id'] as int);
+    _payments = widget.store.salePayments(widget.sale['id'] as int);
   }
 
   Future<void> _returnLine(Map<String, Object?> line) async {
@@ -1454,6 +1475,19 @@ class _SaleDetailDialogState extends State<SaleDetailDialog> {
           _reportLine('Descuento', _money(widget.sale['discount'])),
           _reportLine('Total', _money(widget.sale['total'])),
           _reportLine('Método de pago', _str(widget.sale['payment_method'])),
+          FutureBuilder<List<Map<String, Object?>>>(
+            future: _payments,
+            builder: (context, paymentSnap) {
+              if (!paymentSnap.hasData || paymentSnap.data!.isEmpty) return const SizedBox.shrink();
+              return Column(children: [
+                const SizedBox(height: 6),
+                const Align(alignment: Alignment.centerLeft, child: Text('Desglose del cobro', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800))),
+                ...paymentSnap.data!.map((payment) => _reportLine(
+                  _str(payment['method']), _money(payment['amount']),
+                )),
+              ]);
+            },
+          ),
           _reportLine('Estado', _str(widget.sale['status'], 'COMPLETED')),
           _reportLine('Reembolsado', _money(widget.sale['refunded_total'])),
           const SizedBox(height: 8),
@@ -2002,6 +2036,9 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
   String paymentMethod = 'EFECTIVO';
   bool loading = true;
   bool saving = false;
+  bool splitPayment = false;
+  final splitAmount = TextEditingController(text: '0');
+  String secondPaymentMethod = 'TARJETA';
 
   @override
   void initState() {
@@ -2035,6 +2072,7 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
     discount.dispose();
     paid.dispose();
     notes.dispose();
+    splitAmount.dispose();
     super.dispose();
   }
 
@@ -2085,6 +2123,22 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
       ));
       return;
     }
+    final paidValue = _value(paid);
+    List<Map<String, Object?>>? breakdown;
+    if (splitPayment && paidValue > 0) {
+      final second = _value(splitAmount);
+      final first = FinancialRules.money(paidValue - second);
+      if (second <= 0 || first <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Ambos medios de pago deben tener un importe mayor a cero y sumar el pago inicial.'),
+        ));
+        return;
+      }
+      breakdown = [
+        {'method': paymentMethod, 'amount': first},
+        {'method': secondPaymentMethod, 'amount': second},
+      ];
+    }
     setState(() => saving = true);
     try {
       await widget.store.createPurchase(
@@ -2095,8 +2149,9 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
           'unit_cost': _value(line.unitCost),
         }).toList(),
         discount: _value(discount),
-        paid: _value(paid),
+        paid: paidValue,
         paymentMethod: paymentMethod,
+        paymentBreakdown: breakdown,
         notes: notes.text,
       );
       if (mounted) Navigator.pop(context, true);
@@ -2170,9 +2225,20 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
         const SizedBox(height: 8),
         _field(paid, 'Pago inicial al proveedor', number: true),
         const SizedBox(height: 8),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Dividir el pago inicial', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          subtitle: const Text('Usa dos medios para pagar al proveedor', style: TextStyle(fontSize: 10)),
+          value: splitPayment,
+          onChanged: (value) => setState(() {
+            splitPayment = value;
+            if (value) splitAmount.text = (double.tryParse(paid.text.replaceAll(',', '.')) ?? 0) / 2 == 0
+              ? '0' : ((double.tryParse(paid.text.replaceAll(',', '.')) ?? 0) / 2).toStringAsFixed(2);
+          }),
+        ),
         DropdownButtonFormField<String>(
           initialValue: paymentMethod,
-          decoration: const InputDecoration(labelText: 'Método de pago'),
+          decoration: const InputDecoration(labelText: 'Primer medio de pago'),
           items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
             .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
           onChanged: (v) => setState(() => paymentMethod = v ?? paymentMethod),
@@ -2211,6 +2277,7 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
   String method = 'EFECTIVO';
   bool saving = false;
   late Future<List<Map<String, Object?>>> _items;
+  late Future<List<Map<String, Object?>>> _payments;
 
   Future<void> _returnLine(Map<String, Object?> line) async {
     final remaining = FinancialRules.remainingQuantity(
@@ -2268,6 +2335,7 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
   void initState() {
     super.initState();
     _items = widget.store.purchaseItems(widget.purchase['id'] as int);
+    _payments = widget.store.purchasePayments(widget.purchase['id'] as int);
   }
 
   @override
@@ -2314,6 +2382,20 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
         _reportLine('Total', _money(total)),
         _reportLine('Pagado', _money(paid)),
         _reportLine('Saldo', _money(balance)),
+        FutureBuilder<List<Map<String, Object?>>>(
+          future: _payments,
+          builder: (context, paymentSnap) {
+            if (!paymentSnap.hasData || paymentSnap.data!.isEmpty) return const SizedBox.shrink();
+            return Column(children: [
+              const SizedBox(height: 6),
+              const Align(alignment: Alignment.centerLeft, child: Text('Historial de pagos', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800))),
+              ...paymentSnap.data!.map((payment) => _reportLine(
+                '${_str(payment['method'])} · ${_date(payment['created_at'])}',
+                _money(payment['amount']),
+              )),
+            ]);
+          },
+        ),
         if (balance > 0.01) ...[
           const Divider(),
           const Text('Registrar abono', style: TextStyle(fontWeight: FontWeight.w800)),
