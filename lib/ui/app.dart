@@ -1083,7 +1083,6 @@ class _SaleDialogState extends State<SaleDialog> {
   bool loading = true;
   bool saving = false;
   bool splitPayment = false;
-  bool receiveImmediately = true;
   final splitAmount = TextEditingController(text: '0');
   String secondPaymentMethod = 'TARJETA';
 
@@ -2161,6 +2160,7 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
   bool loading = true;
   bool saving = false;
   bool splitPayment = false;
+  bool receiveImmediately = true;
   final splitAmount = TextEditingController(text: '0');
   String secondPaymentMethod = 'TARJETA';
 
