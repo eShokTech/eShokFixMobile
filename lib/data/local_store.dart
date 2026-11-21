@@ -2,6 +2,53 @@ import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import '../domain/workflow.dart';
+import '../domain/financial_rules.dart';
+
+Future<void> _createFinancialTables(DatabaseExecutor db) async {
+  await db.execute('''CREATE TABLE IF NOT EXISTS sale_payments(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, sale_id INTEGER NOT NULL,
+    method TEXT NOT NULL, amount REAL NOT NULL, reference TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(sale_id) REFERENCES sales(id) ON DELETE CASCADE
+  )''');
+  await db.execute('''CREATE TABLE IF NOT EXISTS purchase_payments(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, purchase_id INTEGER NOT NULL,
+    method TEXT NOT NULL, amount REAL NOT NULL, reference TEXT DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(purchase_id) REFERENCES purchases(id) ON DELETE CASCADE
+  )''');
+  await db.execute('''CREATE TABLE IF NOT EXISTS sale_returns(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, sale_id INTEGER NOT NULL,
+    amount REAL NOT NULL, refund_method TEXT NOT NULL, reason TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(sale_id) REFERENCES sales(id) ON DELETE CASCADE
+  )''');
+  await db.execute('''CREATE TABLE IF NOT EXISTS sale_return_items(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, return_id INTEGER NOT NULL,
+    sale_item_id INTEGER NOT NULL, quantity REAL NOT NULL, amount REAL NOT NULL,
+    FOREIGN KEY(return_id) REFERENCES sale_returns(id) ON DELETE CASCADE,
+    FOREIGN KEY(sale_item_id) REFERENCES sale_items(id)
+  )''');
+  await db.execute('''CREATE TABLE IF NOT EXISTS purchase_returns(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, purchase_id INTEGER NOT NULL,
+    amount REAL NOT NULL, cash_refund REAL NOT NULL DEFAULT 0,
+    refund_method TEXT NOT NULL DEFAULT 'SALDO_PROVEEDOR',
+    reason TEXT NOT NULL, created_at TEXT NOT NULL,
+    FOREIGN KEY(purchase_id) REFERENCES purchases(id) ON DELETE CASCADE
+  )''');
+  await db.execute('''CREATE TABLE IF NOT EXISTS purchase_return_items(
+    id INTEGER PRIMARY KEY AUTOINCREMENT, return_id INTEGER NOT NULL,
+    purchase_item_id INTEGER NOT NULL, item_id INTEGER NOT NULL,
+    quantity REAL NOT NULL, unit_cost REAL NOT NULL, line_total REAL NOT NULL,
+    FOREIGN KEY(return_id) REFERENCES purchase_returns(id) ON DELETE CASCADE,
+    FOREIGN KEY(purchase_item_id) REFERENCES purchase_items(id),
+    FOREIGN KEY(item_id) REFERENCES inventory_items(id)
+  )''');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_sale_payments_sale ON sale_payments(sale_id)');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_purchase_payments_purchase ON purchase_payments(purchase_id)');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_sale_returns_sale ON sale_returns(sale_id)');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_purchase_returns_purchase ON purchase_returns(purchase_id)');
+}
 
 Future<void> _createOrderPartsTable(DatabaseExecutor db) async {
   await db.execute('''CREATE TABLE order_parts(
@@ -42,6 +89,7 @@ Future<void> _createPurchaseTables(DatabaseExecutor db) async {
     total REAL NOT NULL,
     paid REAL NOT NULL DEFAULT 0,
     payment_status TEXT NOT NULL DEFAULT 'PENDIENTE',
+    status TEXT NOT NULL DEFAULT 'RECEIVED',
     payment_method TEXT NOT NULL DEFAULT 'EFECTIVO',
     notes TEXT DEFAULT '',
     received_at TEXT NOT NULL,
@@ -56,6 +104,7 @@ Future<void> _createPurchaseTables(DatabaseExecutor db) async {
     quantity REAL NOT NULL,
     unit_cost REAL NOT NULL,
     line_total REAL NOT NULL,
+    returned_quantity REAL NOT NULL DEFAULT 0,
     FOREIGN KEY(purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
     FOREIGN KEY(item_id) REFERENCES inventory_items(id)
   )''');
@@ -74,7 +123,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 5,
+      version: 6,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -126,12 +175,13 @@ class LocalStore {
           id INTEGER PRIMARY KEY AUTOINCREMENT, folio TEXT UNIQUE NOT NULL,
           client_id INTEGER, subtotal REAL NOT NULL, discount REAL NOT NULL DEFAULT 0,
           total REAL NOT NULL, payment_method TEXT NOT NULL, amount_paid REAL NOT NULL,
+          status TEXT NOT NULL DEFAULT 'COMPLETED', refunded_total REAL NOT NULL DEFAULT 0,
           notes TEXT DEFAULT '', created_at TEXT NOT NULL,
           FOREIGN KEY(client_id) REFERENCES clients(id))''');
         batch.execute('''CREATE TABLE sale_items(
           id INTEGER PRIMARY KEY AUTOINCREMENT, sale_id INTEGER NOT NULL,
           item_id INTEGER, description TEXT NOT NULL, quantity REAL NOT NULL,
-          unit_price REAL NOT NULL, line_total REAL NOT NULL,
+          unit_price REAL NOT NULL, line_total REAL NOT NULL, returned_quantity REAL NOT NULL DEFAULT 0,
           FOREIGN KEY(sale_id) REFERENCES sales(id) ON DELETE CASCADE,
           FOREIGN KEY(item_id) REFERENCES inventory_items(id))''');
         batch.execute('''CREATE TABLE cash_movements(
@@ -173,6 +223,7 @@ class LocalStore {
         await batch.commit(noResult: true);
         await _createPurchaseTables(db);
         await _createOrderPartsTable(db);
+        await _createFinancialTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -191,6 +242,21 @@ class LocalStore {
         if (oldVersion < 5) {
           await db.execute("ALTER TABLE cash_movements ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'EFECTIVO'");
           await db.execute("UPDATE cash_movements SET payment_method=UPPER(reference) WHERE UPPER(COALESCE(reference,'')) IN ('TRANSFERENCIA','TARJETA','OTRO')");
+        }
+        if (oldVersion < 6) {
+          await db.execute("ALTER TABLE sales ADD COLUMN status TEXT NOT NULL DEFAULT 'COMPLETED'");
+          await db.execute("ALTER TABLE sales ADD COLUMN refunded_total REAL NOT NULL DEFAULT 0");
+          await db.execute("ALTER TABLE sale_items ADD COLUMN returned_quantity REAL NOT NULL DEFAULT 0");
+          if (oldVersion >= 2) {
+            await db.execute("ALTER TABLE purchases ADD COLUMN status TEXT NOT NULL DEFAULT 'RECEIVED'");
+            await db.execute("ALTER TABLE purchase_items ADD COLUMN returned_quantity REAL NOT NULL DEFAULT 0");
+          }
+          await _createFinancialTables(db);
+          await db.execute("""INSERT INTO sale_payments(sale_id, method, amount, reference, created_at)
+            SELECT id, payment_method, amount_paid, '', created_at FROM sales WHERE amount_paid > 0""");
+          await db.execute("""INSERT INTO purchase_payments(purchase_id, method, amount, reference, created_at)
+            SELECT id, payment_method, paid, 'Registro histórico migrado', created_at
+            FROM purchases WHERE paid > 0""");
         }
       },
     );
@@ -552,11 +618,14 @@ class LocalStore {
   }
 
   Future<void> addOrderPayment(int orderId, double amount, String method, {String reference = '', String notes = ''}) async {
-    if (amount <= 0) throw ArgumentError('El importe debe ser mayor a cero.');
+    if (!amount.isFinite || amount <= 0) throw ArgumentError('El importe debe ser mayor a cero y válido.');
+    if (!FinancialRules.paymentMethods.contains(method.trim().toUpperCase())) throw ArgumentError('Medio de pago no válido.');
     final now = _now();
     await db.transaction((tx) async {
       final row = await tx.query('service_orders', columns: ['paid', 'total', 'folio'], where: 'id=?', whereArgs: [orderId], limit: 1);
       if (row.isEmpty) throw StateError('Orden no encontrada.');
+      final orderState = await tx.query('service_orders', columns: ['status'], where: 'id=?', whereArgs: [orderId], limit: 1);
+      if (orderState.isEmpty || orderState.first['status'] == 'CANCELADO') throw StateError('No se pueden registrar pagos en una orden cancelada.');
       final paid = (row.first['paid'] as num).toDouble();
       final total = (row.first['total'] as num).toDouble();
       if (amount > total - paid + 0.01) throw StateError('El pago supera el saldo pendiente.');
@@ -574,12 +643,35 @@ class LocalStore {
   }
 
   Future<int> saveInventoryItem({int? id, String sku = '', required String name, String category = 'General', double stock = 0, double minStock = 0, double cost = 0, double price = 0, String location = ''}) async {
+    if (name.trim().isEmpty) throw ArgumentError('El nombre del artículo es obligatorio.');
+    if (!stock.isFinite || !minStock.isFinite || !cost.isFinite || !price.isFinite ||
+        stock < 0 || minStock < 0 || cost < 0 || price < 0) {
+      throw ArgumentError('Existencia, mínimo, costo y precio deben ser importes válidos no negativos.');
+    }
     final now = _now();
-    final data = {'sku': sku.trim().isEmpty ? null : sku.trim(), 'name': name.trim(), 'category': category.trim(), 'stock': stock, 'min_stock': minStock, 'cost': cost, 'price': price, 'location': location.trim(), 'updated_at': now};
+    final data = {
+      'sku': sku.trim().isEmpty ? null : sku.trim(),
+      'name': name.trim(),
+      'category': category.trim().isEmpty ? 'General' : category.trim(),
+      'min_stock': minStock,
+      'cost': cost,
+      'price': price,
+      'location': location.trim(),
+      'updated_at': now,
+    };
     int itemId;
-    if (id == null) { itemId = await db.insert('inventory_items', data); }
-    else { await db.update('inventory_items', data, where: 'id=?', whereArgs: [id]); itemId = id; }
-    if (id == null && stock != 0) await _inventoryMovement(itemId, stock, stock > 0 ? 'IN' : 'OUT', 'Existencia inicial');
+    if (id == null) {
+      itemId = await db.insert('inventory_items', {...data, 'stock': stock});
+      if (stock > 0) await _inventoryMovement(itemId, stock, 'IN', 'Existencia inicial');
+      await _audit('inventory_item', itemId, 'CREATE', name.trim());
+    } else {
+      final exists = await db.query('inventory_items', columns: ['id'],
+        where: 'id=?', whereArgs: [id], limit: 1);
+      if (exists.isEmpty) throw StateError('Artículo de inventario no encontrado.');
+      await db.update('inventory_items', data, where: 'id=?', whereArgs: [id]);
+      itemId = id;
+      await _audit('inventory_item', itemId, 'UPDATE', name.trim());
+    }
     await _outbox('inventory_item', itemId, id == null ? 'CREATE' : 'UPDATE', data);
     return itemId;
   }
@@ -657,6 +749,7 @@ class LocalStore {
     double discount = 0,
     double paid = 0,
     String paymentMethod = 'EFECTIVO',
+    List<Map<String, Object?>>? paymentBreakdown,
     String notes = '',
   }) async {
     if (items.isEmpty) throw ArgumentError('Agrega al menos un artículo a la compra.');
@@ -687,6 +780,11 @@ class LocalStore {
     if (discount > subtotal) throw ArgumentError('El descuento no puede superar el subtotal.');
     final total = PurchaseAccounting.total(subtotal, discount);
     if (paid > total) throw ArgumentError('El pago inicial no puede superar el total de la compra.');
+    final tender = FinancialRules.normalizePayments(
+      total: paid, fallbackMethod: paymentMethod, payments: paymentBreakdown,
+    );
+    final storedMethod = tender.length > 1 ? 'MIXTO'
+        : (tender.isEmpty ? paymentMethod : tender.first['method'] as String);
     final now = _now();
 
     return db.transaction((tx) async {
@@ -707,7 +805,7 @@ class LocalStore {
         'total': total,
         'paid': paid,
         'payment_status': PurchaseAccounting.paymentStatus(total, paid),
-        'payment_method': paymentMethod,
+        'payment_method': storedMethod,
         'notes': notes.trim(),
         'received_at': now,
         'created_at': now,
@@ -740,11 +838,17 @@ class LocalStore {
           'created_at': now,
         });
       }
-      if (paid > 0) {
+      for (final part in tender) {
+        final method = part['method'] as String;
+        final amount = part['amount'] as double;
+        await tx.insert('purchase_payments', {
+          'purchase_id': purchaseId, 'method': method,
+          'amount': amount, 'reference': '', 'created_at': now,
+        });
         await tx.insert('cash_movements', {
-          'movement_type': 'OUT', 'amount': paid,
-          'concept': 'Pago de compra $folio', 'reference': paymentMethod,
-          'payment_method': paymentMethod, 'created_at': now,
+          'movement_type': 'OUT', 'amount': amount,
+          'concept': 'Pago de compra $folio', 'reference': method,
+          'payment_method': method, 'created_at': now,
         });
       }
       await tx.insert('audit_log', {
@@ -758,7 +862,7 @@ class LocalStore {
         'payload': jsonEncode({
           'folio': folio, 'supplier_id': supplierId,
           'subtotal': subtotal, 'discount': discount,
-          'total': total, 'paid': paid, 'items': prepared,
+          'total': total, 'paid': paid, 'payment_breakdown': tender, 'items': prepared,
         }),
         'created_at': now,
       });
@@ -787,6 +891,10 @@ class LocalStore {
         'payment_status': PurchaseAccounting.paymentStatus(total, newPaid),
         'payment_method': method,
       }, where: 'id=?', whereArgs: [purchaseId]);
+      await tx.insert('purchase_payments', {
+        'purchase_id': purchaseId, 'method': method, 'amount': amount,
+        'reference': reference.trim(), 'created_at': now,
+      });
       await tx.insert('cash_movements', {
         'movement_type': 'OUT', 'amount': amount,
         'concept': 'Abono a compra ${rows.first['folio']}',
@@ -808,6 +916,14 @@ class LocalStore {
   }
 
   Future<List<Map<String, Object?>>> sales() => db.rawQuery('''SELECT s.*, c.name client_name FROM sales s LEFT JOIN clients c ON c.id=s.client_id ORDER BY s.id DESC LIMIT 100''');
+  Future<List<Map<String, Object?>>> salePayments(int saleId) => db.query(
+    'sale_payments', where: 'sale_id=?', whereArgs: [saleId], orderBy: 'id');
+  Future<List<Map<String, Object?>>> saleReturns(int saleId) => db.query(
+    'sale_returns', where: 'sale_id=?', whereArgs: [saleId], orderBy: 'id DESC');
+  Future<List<Map<String, Object?>>> purchasePayments(int purchaseId) => db.query(
+    'purchase_payments', where: 'purchase_id=?', whereArgs: [purchaseId], orderBy: 'id');
+  Future<List<Map<String, Object?>>> purchaseReturns(int purchaseId) => db.query(
+    'purchase_returns', where: 'purchase_id=?', whereArgs: [purchaseId], orderBy: 'id DESC');
   Future<void> createSale({int? itemId, required String description, required double quantity, required double unitPrice, required String paymentMethod, double discount = 0, String notes = ''}) async {
     if (quantity <= 0 || unitPrice < 0 || discount < 0 || discount > quantity * unitPrice) throw ArgumentError('Revisa cantidad, importe y descuento.');
     final now = _now();
@@ -820,7 +936,10 @@ class LocalStore {
       }
       final subtotal = quantity * unitPrice;
       final total = (subtotal - discount).clamp(0, double.infinity).toDouble();
-      final saleId = await tx.insert('sales', {'folio': 'PENDING-${DateTime.now().microsecondsSinceEpoch}', 'client_id': null, 'subtotal': subtotal, 'discount': discount, 'total': total, 'payment_method': paymentMethod, 'amount_paid': total, 'notes': notes, 'created_at': now});
+      final saleId = await tx.insert('sales', {'folio': 'PENDING-${DateTime.now().microsecondsSinceEpoch}', 'client_id': null, 'subtotal': subtotal, 'discount': discount, 'total': total, 'payment_method': storedMethod,
+        'amount_paid': total,
+        'status': 'COMPLETED',
+        'refunded_total': 0, 'notes': notes, 'created_at': now});
       final folio = _moneyFolio('PV', saleId);
       await tx.update('sales', {'folio': folio}, where: 'id=?', whereArgs: [saleId]);
       await tx.insert('sale_items', {'sale_id': saleId, 'item_id': itemId, 'description': description, 'quantity': quantity, 'unit_price': unitPrice, 'line_total': subtotal});
@@ -838,6 +957,7 @@ class LocalStore {
     required List<Map<String, Object?>> items,
     required String paymentMethod,
     double discount = 0,
+    List<Map<String, Object?>>? paymentBreakdown,
     String notes = '',
   }) async {
     if (items.isEmpty) throw ArgumentError('Agrega al menos un producto o servicio.');
@@ -870,6 +990,11 @@ class LocalStore {
     }
     if (discount > subtotal) throw ArgumentError('El descuento no puede superar el subtotal.');
     final total = (subtotal - discount).clamp(0.0, double.infinity).toDouble();
+    final tender = FinancialRules.normalizePayments(
+      total: total, fallbackMethod: paymentMethod, payments: paymentBreakdown,
+    );
+    final storedMethod = tender.length > 1 ? 'MIXTO'
+        : (tender.isEmpty ? paymentMethod : tender.first['method'] as String);
     final now = _now();
 
     return db.transaction((tx) async {
@@ -925,11 +1050,18 @@ class LocalStore {
           'line_total': line['line_total'],
         });
       }
-      if (total > 0) {
+      for (final part in tender) {
+        final method = part['method'] as String;
+        final amount = part['amount'] as double;
+        await tx.insert('sale_payments', {
+          'sale_id': saleId, 'method': method, 'amount': amount,
+          'reference': '', 'created_at': now,
+        });
         await tx.insert('cash_movements', {
-          'movement_type': 'IN', 'amount': total,
-          'concept': 'Venta POS $folio', 'reference': paymentMethod,
-          'created_at': now, 'related_sale_id': saleId, 'payment_method': paymentMethod,
+          'movement_type': 'IN', 'amount': amount,
+          'concept': 'Venta POS $folio', 'reference': method,
+          'created_at': now, 'related_sale_id': saleId,
+          'payment_method': method,
         });
       }
       await tx.insert('audit_log', {
@@ -942,12 +1074,240 @@ class LocalStore {
         'operation': 'CREATE',
         'payload': jsonEncode({
           'folio': folio, 'client_id': clientId, 'subtotal': subtotal,
-          'discount': discount, 'total': total, 'method': paymentMethod,
-          'items': prepared,
+          'discount': discount, 'total': total, 'method': storedMethod,
+          'payment_breakdown': tender, 'items': prepared,
         }),
         'created_at': now,
       });
       return saleId;
+    });
+  }
+
+  Future<void> returnSaleItem({
+    required int saleId,
+    required int saleItemId,
+    required double quantity,
+    required String refundMethod,
+    required String reason,
+  }) async {
+    if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad a devolver debe ser mayor a cero.');
+    if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de la devolución.');
+    final method = refundMethod.trim().toUpperCase();
+    if (!FinancialRules.paymentMethods.contains(method)) throw ArgumentError('Selecciona un medio de reembolso válido.');
+    final now = _now();
+    await db.transaction((tx) async {
+      final rows = await tx.rawQuery('''SELECT si.*, s.status sale_status,
+          s.subtotal sale_subtotal, s.total sale_total, s.refunded_total,
+          i.stock item_stock
+        FROM sale_items si JOIN sales s ON s.id=si.sale_id
+        LEFT JOIN inventory_items i ON i.id=si.item_id
+        WHERE si.id=? AND si.sale_id=?''', [saleItemId, saleId]);
+      if (rows.isEmpty) throw StateError('No se encontró la partida de la venta.');
+      final row = rows.first;
+      if (row['sale_status'] == 'VOID') throw StateError('La venta ya fue cancelada.');
+      final sold = (row['quantity'] as num).toDouble();
+      final returned = (row['returned_quantity'] as num).toDouble();
+      final remaining = FinancialRules.remainingQuantity(sold, returned);
+      if (quantity > remaining + 0.000001) throw StateError('La cantidad supera lo que queda por devolver.');
+      final amount = FinancialRules.saleLineRefund(
+        quantity: quantity,
+        unitPrice: (row['unit_price'] as num).toDouble(),
+        saleSubtotal: (row['sale_subtotal'] as num).toDouble(),
+        saleTotal: (row['sale_total'] as num).toDouble(),
+      );
+      final alreadyRefunded = (row['refunded_total'] as num).toDouble();
+      final saleTotal = (row['sale_total'] as num).toDouble();
+      if (alreadyRefunded + amount > saleTotal + 0.01) throw StateError('El reembolso superaría el total cobrado.');
+      final returnId = await tx.insert('sale_returns', {
+        'sale_id': saleId, 'amount': amount, 'refund_method': method,
+        'reason': reason.trim(), 'created_at': now,
+      });
+      await tx.insert('sale_return_items', {
+        'return_id': returnId, 'sale_item_id': saleItemId,
+        'quantity': quantity, 'amount': amount,
+      });
+      final itemId = row['item_id'];
+      if (itemId is int) {
+        final stock = (row['item_stock'] as num?)?.toDouble();
+        if (stock == null) throw StateError('El artículo asociado ya no existe.');
+        await tx.update('inventory_items', {'stock': stock + quantity, 'updated_at': now},
+          where: 'id=?', whereArgs: [itemId]);
+        await tx.insert('inventory_movements', {
+          'item_id': itemId, 'movement_type': 'IN', 'quantity': quantity,
+          'reason': 'Devolución de venta $saleId', 'created_at': now,
+        });
+      }
+      await tx.update('sale_items', {'returned_quantity': returned + quantity},
+        where: 'id=?', whereArgs: [saleItemId]);
+      final outstandingLines = Sqflite.firstIntValue(await tx.rawQuery('''
+        SELECT COUNT(*) FROM sale_items
+        WHERE sale_id=? AND returned_quantity < quantity - 0.000001
+      ''', [saleId])) ?? 0;
+      await tx.update('sales', {
+        'refunded_total': (alreadyRefunded + amount).clamp(0.0, saleTotal).toDouble(),
+        'status': outstandingLines == 0 ? 'VOID' : 'PARTIAL_RETURN',
+      }, where: 'id=?', whereArgs: [saleId]);
+      if (amount > 0) {
+        await tx.insert('cash_movements', {
+          'movement_type': 'OUT', 'amount': amount, 'concept': 'Devolución de venta $saleId',
+          'reference': method, 'payment_method': method, 'created_at': now,
+          'related_sale_id': saleId,
+        });
+      }
+      await tx.insert('audit_log', {
+        'entity': 'sale', 'entity_id': saleId, 'action': 'RETURN_ITEM',
+        'detail': '$quantity · $amount · $method · ${reason.trim()}', 'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'sale_return', 'entity_id': returnId, 'operation': 'CREATE',
+        'payload': jsonEncode({'sale_id': saleId, 'sale_item_id': saleItemId,
+          'quantity': quantity, 'amount': amount, 'method': method, 'reason': reason.trim()}),
+        'created_at': now,
+      });
+    });
+  }
+
+  Future<void> cancelSale(int saleId, {
+    required String refundMethod, required String reason,
+  }) async {
+    if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de cancelación.');
+    final method = refundMethod.trim().toUpperCase();
+    if (!FinancialRules.paymentMethods.contains(method)) throw ArgumentError('Selecciona un medio de reembolso válido.');
+    final now = _now();
+    await db.transaction((tx) async {
+      final rows = await tx.query('sales',
+        columns: ['folio', 'total', 'refunded_total', 'status'],
+        where: 'id=?', whereArgs: [saleId], limit: 1);
+      if (rows.isEmpty) throw StateError('Venta no encontrada.');
+      final sale = rows.first;
+      if (sale['status'] == 'VOID') throw StateError('La venta ya está cancelada.');
+      final total = (sale['total'] as num).toDouble();
+      final refunded = (sale['refunded_total'] as num).toDouble();
+      final refund = FinancialRules.money(total - refunded);
+      if (refund <= 0) throw StateError('La venta no tiene saldo por reembolsar.');
+      final lines = await tx.query('sale_items', where: 'sale_id=?', whereArgs: [saleId], orderBy: 'id');
+      final returnId = await tx.insert('sale_returns', {
+        'sale_id': saleId, 'amount': refund, 'refund_method': method,
+        'reason': reason.trim(), 'created_at': now,
+      });
+      for (final line in lines) {
+        final quantity = (line['quantity'] as num).toDouble();
+        final returned = (line['returned_quantity'] as num).toDouble();
+        final remaining = FinancialRules.remainingQuantity(quantity, returned);
+        if (remaining <= 0) continue;
+        await tx.insert('sale_return_items', {
+          'return_id': returnId, 'sale_item_id': line['id'], 'quantity': remaining, 'amount': 0,
+        });
+        final itemId = line['item_id'];
+        if (itemId is int) {
+          final itemRows = await tx.query('inventory_items', columns: ['stock'],
+            where: 'id=?', whereArgs: [itemId], limit: 1);
+          if (itemRows.isEmpty) throw StateError('Un artículo vendido ya no existe en inventario.');
+          final stock = (itemRows.first['stock'] as num).toDouble();
+          await tx.update('inventory_items', {'stock': stock + remaining, 'updated_at': now},
+            where: 'id=?', whereArgs: [itemId]);
+          await tx.insert('inventory_movements', {
+            'item_id': itemId, 'movement_type': 'IN', 'quantity': remaining,
+            'reason': 'Cancelación de venta ${sale['folio']}', 'created_at': now,
+          });
+        }
+        await tx.update('sale_items', {'returned_quantity': quantity},
+          where: 'id=?', whereArgs: [line['id']]);
+      }
+      await tx.update('sales', {'refunded_total': total, 'status': 'VOID'},
+        where: 'id=?', whereArgs: [saleId]);
+      await tx.insert('cash_movements', {
+        'movement_type': 'OUT', 'amount': refund,
+        'concept': 'Reembolso de venta ${sale['folio']}',
+        'reference': method, 'payment_method': method,
+        'created_at': now, 'related_sale_id': saleId,
+      });
+      await tx.insert('audit_log', {
+        'entity': 'sale', 'entity_id': saleId, 'action': 'CANCEL',
+        'detail': '$refund · $method · ${reason.trim()}', 'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'sale', 'entity_id': saleId, 'operation': 'CANCEL',
+        'payload': jsonEncode({'refund': refund, 'method': method, 'reason': reason.trim()}),
+        'created_at': now,
+      });
+    });
+  }
+
+  Future<void> returnPurchaseItem({
+    required int purchaseId,
+    required int purchaseItemId,
+    required double quantity,
+    String refundMethod = 'EFECTIVO',
+    required String reason,
+  }) async {
+    if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad a devolver debe ser mayor a cero.');
+    if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de la devolución.');
+    final method = refundMethod.trim().toUpperCase();
+    if (!FinancialRules.paymentMethods.contains(method)) throw ArgumentError('Selecciona un medio de reembolso válido.');
+    final now = _now();
+    await db.transaction((tx) async {
+      final rows = await tx.rawQuery('''SELECT pi.*, i.stock,
+          p.folio, p.total purchase_total, p.paid purchase_paid
+        FROM purchase_items pi JOIN purchases p ON p.id=pi.purchase_id
+        JOIN inventory_items i ON i.id=pi.item_id
+        WHERE pi.id=? AND pi.purchase_id=?''', [purchaseItemId, purchaseId]);
+      if (rows.isEmpty) throw StateError('No se encontró la partida de compra.');
+      final row = rows.first;
+      final received = (row['quantity'] as num).toDouble();
+      final returned = (row['returned_quantity'] as num).toDouble();
+      final remaining = FinancialRules.remainingQuantity(received, returned);
+      if (quantity > remaining + 0.000001) throw StateError('La cantidad supera lo recibido y aún disponible para devolución.');
+      final stock = (row['stock'] as num).toDouble();
+      if (stock + 0.000001 < quantity) throw StateError('No hay existencias suficientes para devolver esta cantidad al proveedor.');
+      final unitCost = (row['unit_cost'] as num).toDouble();
+      final amount = FinancialRules.money(quantity * unitCost);
+      final oldTotal = (row['purchase_total'] as num).toDouble();
+      final oldPaid = (row['purchase_paid'] as num).toDouble();
+      final newTotal = FinancialRules.money((oldTotal - amount).clamp(0.0, double.infinity).toDouble());
+      final cashRefund = FinancialRules.supplierCashRefund(
+        purchaseTotal: oldTotal, paid: oldPaid, returnAmount: amount,
+      );
+      final newPaid = FinancialRules.money((oldPaid - cashRefund).clamp(0.0, newTotal).toDouble());
+      final returnId = await tx.insert('purchase_returns', {
+        'purchase_id': purchaseId, 'amount': amount, 'cash_refund': cashRefund,
+        'refund_method': cashRefund > 0 ? method : 'SALDO_PROVEEDOR',
+        'reason': reason.trim(), 'created_at': now,
+      });
+      await tx.insert('purchase_return_items', {
+        'return_id': returnId, 'purchase_item_id': purchaseItemId,
+        'item_id': row['item_id'], 'quantity': quantity,
+        'unit_cost': unitCost, 'line_total': amount,
+      });
+      await tx.update('purchase_items', {'returned_quantity': returned + quantity},
+        where: 'id=?', whereArgs: [purchaseItemId]);
+      await tx.update('inventory_items', {'stock': stock - quantity, 'updated_at': now},
+        where: 'id=?', whereArgs: [row['item_id']]);
+      await tx.insert('inventory_movements', {
+        'item_id': row['item_id'], 'movement_type': 'OUT', 'quantity': quantity,
+        'reason': 'Devolución a proveedor ${row['folio']}', 'created_at': now,
+      });
+      await tx.update('purchases', {
+        'total': newTotal, 'paid': newPaid, 'payment_status': PurchaseAccounting.paymentStatus(newTotal, newPaid),
+      }, where: 'id=?', whereArgs: [purchaseId]);
+      if (cashRefund > 0) {
+        await tx.insert('cash_movements', {
+          'movement_type': 'IN', 'amount': cashRefund,
+          'concept': 'Reembolso de proveedor ${row['folio']}',
+          'reference': method, 'payment_method': method, 'created_at': now,
+        });
+      }
+      await tx.insert('audit_log', {
+        'entity': 'purchase', 'entity_id': purchaseId, 'action': 'RETURN_ITEM',
+        'detail': '$quantity · $amount · reembolso $cashRefund · ${reason.trim()}',
+        'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'purchase_return', 'entity_id': returnId, 'operation': 'CREATE',
+        'payload': jsonEncode({'purchase_id': purchaseId, 'purchase_item_id': purchaseItemId,
+          'quantity': quantity, 'amount': amount, 'cash_refund': cashRefund, 'reason': reason.trim()}),
+        'created_at': now,
+      });
     });
   }
 
@@ -980,7 +1340,9 @@ class LocalStore {
     String reference = '',
     String paymentMethod = 'EFECTIVO',
   }) async {
-    if (amount <= 0) throw ArgumentError('El importe debe ser mayor a cero.');
+    if (!amount.isFinite || amount <= 0) throw ArgumentError('El importe debe ser mayor a cero y válido.');
+    if (concept.trim().isEmpty) throw ArgumentError('El concepto es obligatorio.');
+    if (!FinancialRules.paymentMethods.contains(paymentMethod.trim().toUpperCase())) throw ArgumentError('Medio de pago no válido.');
     final now = _now();
     final id = await db.insert('cash_movements', {
       'movement_type': income ? 'IN' : 'OUT',
@@ -998,11 +1360,32 @@ class LocalStore {
   }
 
   Future<void> closeCashCut(double counted, String notes) async {
-    final summary = await cashSummary();
+    if (!counted.isFinite || counted < 0) throw ArgumentError('El efectivo contado debe ser un importe válido no negativo.');
     final now = _now();
-    final id = await db.insert('cash_cuts', {'opened_at': 'Desde el corte anterior', 'closed_at': now, 'expected': summary['balance'], 'counted': counted, 'difference': counted - (summary['balance'] ?? 0), 'notes': notes});
-    await _audit('cash_cut', id, 'CLOSE', 'Esperado ${summary['balance']} · contado $counted');
-    await _outbox('cash_cut', id, 'CREATE', {'expected': summary['balance'], 'counted': counted, 'difference': counted - (summary['balance'] ?? 0)});
+    await db.transaction((tx) async {
+      final latest = await tx.rawQuery("SELECT MAX(closed_at) closed_at FROM cash_cuts");
+      final lastClosed = latest.first['closed_at'] as String? ?? '0000-01-01';
+      final rows = await tx.rawQuery('''SELECT
+        COALESCE(SUM(CASE WHEN movement_type='IN' THEN amount ELSE -amount END),0) balance
+        FROM cash_movements
+        WHERE created_at > ? AND payment_method='EFECTIVO' ''', [lastClosed]);
+      final expected = (rows.first['balance'] as num).toDouble();
+      final difference = counted - expected;
+      final id = await tx.insert('cash_cuts', {
+        'opened_at': lastClosed, 'closed_at': now,
+        'expected': expected, 'counted': counted,
+        'difference': difference, 'notes': notes.trim(),
+      });
+      await tx.insert('audit_log', {
+        'entity': 'cash_cut', 'entity_id': id, 'action': 'CLOSE',
+        'detail': 'Esperado $expected · contado $counted', 'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'cash_cut', 'entity_id': id, 'operation': 'CREATE',
+        'payload': {'expected': expected, 'counted': counted, 'difference': difference},
+        'created_at': now,
+      });
+    });
   }
 
   Future<List<Map<String, Object?>>> cashMovements() => db.query('cash_movements', orderBy: 'id DESC', limit: 100);

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:eshokfix_mobile/domain/workflow.dart';
+import 'package:eshokfix_mobile/domain/financial_rules.dart';
 
 void main() {
   group('OrderWorkflow', () {
@@ -59,6 +60,39 @@ void main() {
     test('recalculates order total with labor, parts and discount', () {
       expect(OrderPartAccounting.orderTotal(labor: 350, parts: 180, discount: 30), 500);
       expect(OrderPartAccounting.orderTotal(labor: 100, parts: 0, discount: 150), 0);
+    });
+  });
+
+
+  group('FinancialRules', () {
+    test('validates single and split tender exactly', () {
+      expect(FinancialRules.normalizePayments(total: 250, fallbackMethod: 'EFECTIVO'), [
+        {'method': 'EFECTIVO', 'amount': 250.0},
+      ]);
+      expect(FinancialRules.normalizePayments(total: 250, fallbackMethod: 'EFECTIVO', payments: [
+        {'method': 'EFECTIVO', 'amount': 100},
+        {'method': 'TARJETA', 'amount': 150},
+      ]), [
+        {'method': 'EFECTIVO', 'amount': 100.0},
+        {'method': 'TARJETA', 'amount': 150.0},
+      ]);
+    });
+
+    test('rejects tender mismatches and unsupported methods', () {
+      expect(() => FinancialRules.normalizePayments(total: 100, fallbackMethod: 'EFECTIVO',
+        payments: [{'method': 'EFECTIVO', 'amount': 99}]), throwsArgumentError);
+      expect(() => FinancialRules.normalizePayments(total: 100, fallbackMethod: 'EFECTIVO',
+        payments: [{'method': 'BITCOIN', 'amount': 100}]), throwsArgumentError);
+    });
+
+    test('calculates returned balances and discount-adjusted refunds', () {
+      expect(FinancialRules.remainingQuantity(5, 2), 3);
+      expect(FinancialRules.saleLineRefund(quantity: 1, unitPrice: 100, saleSubtotal: 200, saleTotal: 180), 90);
+    });
+
+    test('calculates supplier cash refund only after payable is cleared', () {
+      expect(FinancialRules.supplierCashRefund(purchaseTotal: 500, paid: 200, returnAmount: 100), 0);
+      expect(FinancialRules.supplierCashRefund(purchaseTotal: 500, paid: 500, returnAmount: 100), 100);
     });
   });
 
