@@ -144,6 +144,21 @@ void main() {
     final returns = await store.purchaseReturns(purchaseId);
     expect(returns, hasLength(2));
     expect(returns.fold<double>(0, (sum, row) => sum + (row['amount'] as num).toDouble()), 80);
+    await store.recordPurchasePayment(
+      purchaseId,
+      20,
+      'EFECTIVO',
+      paymentBreakdown: [
+        {'method': 'EFECTIVO', 'amount': 10},
+        {'method': 'TARJETA', 'amount': 10},
+      ],
+    );
+    purchaseAfterReturn = (await store.purchases()).singleWhere((row) => row['id'] == purchaseId);
+    expect((purchaseAfterReturn['paid'] as num).toDouble(), 120);
+    expect(purchaseAfterReturn['payment_status'], 'PAGADA');
+    final purchasePayments = await store.purchasePayments(purchaseId);
+    expect(purchasePayments, hasLength(3));
+    expect(purchasePayments.fold<double>(0, (sum, row) => sum + (row['amount'] as num).toDouble()), 120);
   });
 
   test('cancelled service order refunds collected money and rejects future payments', () async {
@@ -225,7 +240,17 @@ void main() {
     inventory = await store.inventory(query: 'TEST-CHARGE');
     expect(inventory.single['stock'], 1);
 
-    await store.addOrderPayment(orderId, 100, 'EFECTIVO');
+    await store.addOrderPayment(
+      orderId,
+      100,
+      'EFECTIVO',
+      paymentBreakdown: [
+        {'method': 'EFECTIVO', 'amount': 60},
+        {'method': 'TRANSFERENCIA', 'amount': 40},
+      ],
+    );
+    final orderPayments = await store.orderPayments(orderId);
+    expect(orderPayments, hasLength(2));
     await store.cancelOrder(
       orderId,
       refundMethod: 'EFECTIVO',
@@ -240,6 +265,29 @@ void main() {
     final refunds = await store.orderRefunds(orderId);
     expect(refunds, hasLength(1));
     expect(refunds.single['amount'], 100);
+  });
+
+  test('customer history cannot be deleted and closed order diagnosis cannot be edited', () async {
+    final clientId = await store.saveClient(name: 'Cliente con historial');
+    final orderId = await store.createOrder(
+      clientId: clientId,
+      brand: 'Xiaomi', model: 'POCO F6', failure: 'No carga',
+      condition: 'Sin golpes', accessories: 'Equipo solamente',
+      technician: 'Técnico', labor: 200,
+    );
+    await store.cancelOrder(
+      orderId, refundMethod: 'EFECTIVO', reason: 'Prueba de cierre',
+    );
+    await expectLater(
+      store.updateDiagnosis(orderId, 'Editar después de cancelar', ''),
+      throwsA(isA<StateError>()),
+    );
+    await expectLater(
+      store.deleteClient(clientId),
+      throwsA(isA<StateError>()),
+    );
+    final client = await store.client(clientId);
+    expect(client, isNotNull);
   });
 
 }
