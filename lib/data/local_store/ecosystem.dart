@@ -218,7 +218,7 @@ extension LocalStoreEcosystemOperations on LocalStore {
       for (final row in unpaidPurchases) {
         final id = row['id'] as int;
         final balance = ((row['total'] as num).toDouble() -
-            (row['paid'] as num).toDouble()).clamp(0.0, double.infinity);
+            (row['paid'] as num).toDouble()).clamp(0.0, double.infinity).toDouble();
         await tx.rawInsert('''
           INSERT INTO app_notifications
             (event_key,type,title,message,severity,target_view,target_id,
