@@ -1,7 +1,6 @@
 part of '../local_store.dart';
 
-extension LocalStoreWorkshopOperations on LocalStore {
-  Future<Map<String, Object?>> dashboard() async {
+extension LocalStoreWorkshopOperations on LocalStore {  Future<Map<String, Object?>> dashboard() async {
     requirePermission('dashboard.view');
     
     
@@ -21,7 +20,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
       'sales_today': sales, 'income_today': (income.first['total'] as num?)?.toDouble() ?? 0.0,
       'recent': recent, 'pending_local': pending};
   }
-
   Future<List<Map<String, Object?>>> clients({String query = ''}) async {
     requirePermission('clients.view');
     
@@ -33,7 +31,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
       FROM clients c WHERE c.name LIKE ? OR COALESCE(c.phone,'') LIKE ? OR COALESCE(c.whatsapp,'') LIKE ?
       ORDER BY c.name COLLATE NOCASE''', [q, q, q]);
   }
-
   Future<int> saveClient({int? id, required String name, String phone = '', String whatsapp = '', String email = '', String address = '', String notes = ''}) async {
     requirePermission('clients.manage');
     
@@ -54,7 +51,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
     await _outbox('client', clientId, id == null ? 'CREATE' : 'UPDATE', data);
     return clientId;
   }
-
   Future<void> deleteClient(int id) async {
     requirePermission('clients.delete');
     
@@ -84,10 +80,8 @@ extension LocalStoreWorkshopOperations on LocalStore {
       });
     });
   }
-
-  Future<List<Map<String, Object?>>> clientDevices(int clientId) { return db.query('devices', where: 'client_id=?', whereArgs: [clientId], orderBy: 'id DESC'); }
-    requirePermission('clients.view');
-
+  Future<List<Map<String, Object?>>> clientDevices(int clientId) {
+    requirePermission('clients.view'); return db.query('devices', where: 'client_id=?', whereArgs: [clientId], orderBy: 'id DESC'); }
   Future<List<Map<String, Object?>>> orders({String query = '', String status = ''}) async {
     requirePermission('orders.view');
     
@@ -107,7 +101,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
       FROM service_orders o JOIN clients c ON c.id=o.client_id LEFT JOIN devices d ON d.id=o.device_id
       $where ORDER BY o.id DESC''', args);
   }
-
   Future<Map<String, Object?>?> order(int id) async {
     requirePermission('orders.view');
     
@@ -118,7 +111,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
       FROM service_orders o JOIN clients c ON c.id=o.client_id LEFT JOIN devices d ON d.id=o.device_id WHERE o.id=?''', [id]);
     return rows.isEmpty ? null : rows.first;
   }
-
   Future<int> createOrder({ 
     required int clientId,
     required String brand,
@@ -138,6 +130,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     int warrantyDays = 30,
   }) async {
     requirePermission('orders.manage');
+    if (depositAmount > 0) requirePermission('orders.pay');
     
 
     final inputs = [labor, parts, discount, deposit];
@@ -160,7 +153,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
     if (depositAmount > computedTotal) {
       throw ArgumentError('El anticipo no puede superar el total del servicio.');
     }
-    if (depositAmount > 0) requirePermission('orders.pay');
     final depositTender = FinancialRules.normalizePayments(
       total: depositAmount,
       fallbackMethod: depositMethod,
@@ -243,10 +235,8 @@ extension LocalStoreWorkshopOperations on LocalStore {
       return orderId;
     });
   }
-
-  Future<List<Map<String, Object?>>> orderParts(int orderId) { return db.query('order_parts', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
-    requirePermission('orders.view');
-
+  Future<List<Map<String, Object?>>> orderParts(int orderId) {
+    requirePermission('orders.view'); return db.query('order_parts', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
   Future<void> addOrderPart(
     int orderId,
     int itemId,
@@ -347,7 +337,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
       });
     });
   }
-
   Future<void> authorizeOrder(
     int id, {
     required String authorizedBy,
@@ -414,7 +403,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
       });
     });
   }
-
   Future<void> updateDiagnosis(int id, String diagnosis, String notes) async {
     requirePermission('orders.manage');
     
@@ -448,7 +436,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
       });
     });
   }
-
   Future<void> setOrderStatus(int id, String next, {String note = ''}) async {
     requirePermission('orders.manage');
     
@@ -491,13 +478,10 @@ extension LocalStoreWorkshopOperations on LocalStore {
       await tx.insert('sync_outbox', {'entity': 'service_order', 'entity_id': id, 'operation': 'STATUS_CHANGE', 'payload': jsonEncode({'from': old, 'to': next, 'note': note}), 'created_at': now});
     });
   }
-
-  Future<List<Map<String, Object?>>> orderPayments(int orderId) { return db.query('payments', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
-    requirePermission('orders.payments.view');
-
-  Future<List<Map<String, Object?>>> orderRefunds(int orderId) { return db.query('order_refunds', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
-    requirePermission('orders.payments.view');
-
+  Future<List<Map<String, Object?>>> orderPayments(int orderId) {
+    requirePermission('orders.payments.view'); return db.query('payments', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
+  Future<List<Map<String, Object?>>> orderRefunds(int orderId) {
+    requirePermission('orders.payments.view'); return db.query('order_refunds', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
   Future<void> cancelOrder(
     int orderId, {
     required String refundMethod,
@@ -571,12 +555,9 @@ extension LocalStoreWorkshopOperations on LocalStore {
       });
     });
   }
-
-  Future<List<Map<String, Object?>>> orderEvents(int id) { return db.query('order_events', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }
-    requirePermission('orders.view');
-  Future<List<Map<String, Object?>>> orderEvidence(int id) { return db.query('evidences', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }
-    requirePermission('orders.view');
-  Future<void> addEvidence(int orderId, String path, String caption) async {
+  Future<List<Map<String, Object?>>> orderEvents(int id) {
+    requirePermission('orders.view'); return db.query('order_events', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }  Future<List<Map<String, Object?>>> orderEvidence(int id) {
+    requirePermission('orders.view'); return db.query('evidences', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }  Future<void> addEvidence(int orderId, String path, String caption) async {
     requirePermission('orders.manage');
     
     
@@ -589,7 +570,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
     await _audit('evidence', id, 'CREATE', caption);
     await _outbox('evidence', id, 'CREATE', {'order_id': orderId, 'file_path': path, 'caption': caption});
   }
-
   Future<void> addOrderPayment(
     int orderId,
     double amount,
