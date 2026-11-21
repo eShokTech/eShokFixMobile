@@ -12,12 +12,13 @@ class _ClientsPageState extends State<ClientsPage> {
   @override
   void initState() { super.initState(); _refresh(); }
   void _refresh() => _future = widget.store.clients(query: _query.text);
+  bool _can(String permission) => AuthService.can(widget.store.authenticatedUser?.role ?? '', permission);
   @override
   void dispose() { _query.dispose(); super.dispose(); }
   Future<void> _edit([Map<String, Object?>? item]) async { final result = await showDialog<int>(context: context, builder: (_) => ClientFormDialog(store: widget.store, client: item)); if (result != null && mounted) setState(_refresh); }
   @override
   Widget build(BuildContext context) => PageFrame(child: Column(children: [
-    SectionHeading('Clientes', subtitle: 'Expedientes, equipos y datos de contacto', trailing: FilledButton.tonalIcon(onPressed: () => _edit(), icon: const Icon(Icons.person_add_alt_1, size: 17), label: const Text('Nuevo'))),
+    SectionHeading('Clientes', subtitle: 'Expedientes, equipos y datos de contacto', trailing: _can('clients.manage') ? FilledButton.tonalIcon(onPressed: () => _edit(), icon: const Icon(Icons.person_add_alt_1, size: 17), label: const Text('Nuevo')) : null),
     const SizedBox(height: 13), TextField(controller: _query, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar nombre o teléfono'), onChanged: (_) => setState(_refresh)),
     const SizedBox(height: 8), Expanded(child: FutureBuilder<List<Map<String, Object?>>>(future: _future, builder: (context, snap) {
       if (!snap.hasData) return const Center(child: CircularProgressIndicator());
@@ -28,7 +29,7 @@ class _ClientsPageState extends State<ClientsPage> {
         return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Row(children: [
           CircleAvatar(backgroundColor: eShokPurpleLight.withValues(alpha: .35), foregroundColor: eShokPurple, child: Text(_str(c['name'], '?').substring(0,1).toUpperCase())),
           const SizedBox(width: 11), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_str(c['name']), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(_str(c['phone'], 'Sin teléfono'), style: const TextStyle(fontSize: 10, color: Color(0xFF857B91))), const SizedBox(height: 5), Text('${c['device_count']} equipos · ${c['order_count']} servicios', style: const TextStyle(fontSize: 9, color: eShokPurple, fontWeight: FontWeight.w700))])),
-          PopupMenuButton<String>(onSelected: (v) async { if (v == 'edit') await _edit(c); if (v == 'delete') { try { await widget.store.deleteClient(c['id'] as int); if (mounted) setState(_refresh); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } } }, itemBuilder: (_) => const [PopupMenuItem(value: 'edit', child: Text('Editar')), PopupMenuItem(value: 'delete', child: Text('Eliminar'))]),
+          if (_can('clients.manage') || _can('clients.delete')) PopupMenuButton<String>(onSelected: (v) async { if (v == 'edit') await _edit(c); if (v == 'delete') { try { await widget.store.deleteClient(c['id'] as int); if (mounted) setState(_refresh); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } } }, itemBuilder: (_) => [if (_can('clients.manage')) const PopupMenuItem(value: 'edit', child: Text('Editar')), if (_can('clients.delete')) const PopupMenuItem(value: 'delete', child: Text('Eliminar'))]),
         ])));
       });
     })),
@@ -70,13 +71,14 @@ class _InventoryPageState extends State<InventoryPage> {
   @override
   void initState() { super.initState(); _refresh(); }
   void _refresh() => _future = widget.store.inventory(query: _query.text);
+  bool _canManage() => AuthService.can(widget.store.authenticatedUser?.role ?? '', 'inventory.manage');
   @override
   void dispose() { _query.dispose(); super.dispose(); }
   Future<void> _edit([Map<String, Object?>? item]) async { final r = await showDialog<bool>(context: context, builder: (_) => InventoryFormDialog(store: widget.store, item: item)); if (r == true && mounted) setState(_refresh); }
   Future<void> _adjust(Map<String, Object?> item) async { final r = await showDialog<bool>(context: context, builder: (_) => StockDialog(store: widget.store, item: item)); if (r == true && mounted) setState(_refresh); }
   @override
   Widget build(BuildContext context) => PageFrame(child: Column(children: [
-    SectionHeading('Inventario', subtitle: 'Catálogo, existencias y movimientos', trailing: FilledButton.tonalIcon(onPressed: () => _edit(), icon: const Icon(Icons.add, size: 17), label: const Text('Artículo'))),
+    SectionHeading('Inventario', subtitle: 'Catálogo, existencias y movimientos', trailing: _canManage() ? FilledButton.tonalIcon(onPressed: () => _edit(), icon: const Icon(Icons.add, size: 17), label: const Text('Artículo')) : null),
     const SizedBox(height: 13), TextField(controller: _query, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar SKU o descripción'), onChanged: (_) => setState(_refresh)),
     const SizedBox(height: 9), Expanded(child: FutureBuilder<List<Map<String, Object?>>>(future: _future, builder: (context, snap) {
       if (!snap.hasData) return const Center(child: CircularProgressIndicator());
@@ -87,7 +89,7 @@ class _InventoryPageState extends State<InventoryPage> {
         return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Row(children: [
           Container(width: 42, height: 42, decoration: BoxDecoration(color: low ? const Color(0xFFFFF1E2) : eShokPurpleLight.withValues(alpha: .28), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.inventory_2_outlined, color: low ? const Color(0xFFCA7B2C) : eShokPurple)),
           const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_str(item['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)), const SizedBox(height: 3), Text('${_str(item['sku'], 'Sin SKU')} · ${_str(item['category'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))), const SizedBox(height: 4), Text('${_num(item['stock']).toStringAsFixed(0)} en existencia · ${_money(item['price'])}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: eShokInk))])),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [if (low) const Text('STOCK BAJO', style: TextStyle(fontSize: 8, color: Color(0xFFCA7B2C), fontWeight: FontWeight.w900)), TextButton(onPressed: () => _adjust(item), child: const Text('Movimiento', style: TextStyle(fontSize: 10))), PopupMenuButton<String>(onSelected: (v) { if (v == 'edit') _edit(item); if (v == 'adjust') _adjust(item); }, itemBuilder: (_) => const [PopupMenuItem(value: 'edit', child: Text('Editar artículo')), PopupMenuItem(value: 'adjust', child: Text('Ajustar stock'))])]),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [if (low) const Text('STOCK BAJO', style: TextStyle(fontSize: 8, color: Color(0xFFCA7B2C), fontWeight: FontWeight.w900)), if (_canManage()) TextButton(onPressed: () => _adjust(item), child: const Text('Movimiento', style: TextStyle(fontSize: 10))), if (_canManage()) PopupMenuButton<String>(onSelected: (v) { if (v == 'edit') _edit(item); if (v == 'adjust') _adjust(item); }, itemBuilder: (_) => const [PopupMenuItem(value: 'edit', child: Text('Editar artículo')), PopupMenuItem(value: 'adjust', child: Text('Ajustar stock'))])]),
         ])));
       });
     })),
