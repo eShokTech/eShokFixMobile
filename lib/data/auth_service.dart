@@ -374,11 +374,42 @@ class AuthService {
   }
 
   void _validatePassword(String password) {
-    if (password.length < 10 ||
-        !RegExp(r'[a-z]').hasMatch(password) ||
-        !RegExp(r'[A-Z]').hasMatch(password) ||
-        !RegExp(r'[0-9]').hasMatch(password)) {
-      throw ArgumentError('La contraseña debe tener mínimo 10 caracteres e incluir mayúscula, minúscula y número.');
+    if (!RegExp(r'^\d{6}
+
+  Uint8List _derive(String password, List<int> salt) {
+    final key = utf8.encode(password);
+    final block = Uint8List(salt.length + 4)..setRange(0, salt.length, salt);
+    block[block.length - 1] = 1;
+    final hmac = Hmac(sha256, key);
+    var u = hmac.convert(block).bytes;
+    final output = Uint8List.fromList(u);
+    for (var i = 1; i < passwordIterations; i++) {
+      u = hmac.convert(u).bytes;
+      for (var j = 0; j < output.length; j++) {
+        output[j] ^= u[j];
+      }
+    }
+    return output;
+  }
+
+  bool _constantTimeEquals(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    var difference = 0;
+    for (var i = 0; i < a.length; i++) {
+      difference |= a[i] ^ b[i];
+    }
+    return difference == 0;
+  }
+
+  List<int> _randomBytes(int length) {
+    final random = Random.secure();
+    return List<int>.generate(length, (_) => random.nextInt(256));
+  }
+
+  String _randomToken() => base64UrlEncode(_randomBytes(32));
+}
+).hasMatch(password)) {
+      throw ArgumentError('El PIN debe contener exactamente 6 dígitos numéricos.');
     }
   }
 
