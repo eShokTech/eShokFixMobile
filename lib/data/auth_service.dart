@@ -220,11 +220,14 @@ class AuthService {
     await _secureStorage.delete(key: sessionKey);
   }
 
-  Future<List<Map<String, Object?>>> users() => db.query(
+  Future<List<Map<String, Object?>>> users() async {
+    await _requirePermission('users.manage');
+    return db.query(
     'users',
     columns: ['id', 'username', 'display_name', 'role', 'active', 'created_at', 'last_login_at'],
     orderBy: 'display_name',
   );
+  }
 
   Future<void> createUser({
     required String username,
@@ -232,6 +235,7 @@ class AuthService {
     required String role,
     required String password,
   }) async {
+    await _requirePermission('users.manage');
     _validateCredentials(username, displayName, password);
     final normalizedRole = role.toUpperCase();
     if (!rolePermissions.containsKey(normalizedRole)) {
@@ -258,6 +262,7 @@ class AuthService {
     required String role,
     required bool active,
   }) async {
+    await _requirePermission('users.manage');
     if (displayName.trim().isEmpty) throw ArgumentError('El nombre es obligatorio.');
     if (!rolePermissions.containsKey(role.toUpperCase())) {
       throw ArgumentError('Selecciona un rol válido.');
@@ -284,6 +289,7 @@ class AuthService {
   }
 
   Future<void> resetPassword(int userId, String newPassword) async {
+    await _requirePermission('users.manage');
     _validatePassword(newPassword);
     final salt = _randomBytes(16);
     await db.update('users', {
@@ -295,6 +301,31 @@ class AuthService {
     await db.update('auth_sessions',
         {'revoked_at': DateTime.now().toIso8601String()},
         where: 'user_id=? AND revoked_at IS NULL', whereArgs: [userId]);
+  }
+
+
+  Future<void> _requirePermission(String permission) async {
+    final token = await _secureStorage.read(key: sessionKey);
+    if (token == null || token.isEmpty) {
+      throw StateError('Inicia sesión para administrar usuarios.');
+    }
+    final digest = sha256.convert(utf8.encode(token)).toString();
+    final rows = await db.rawQuery('''
+      SELECT u.role, u.active, s.expires_at, s.last_seen_at
+      FROM auth_sessions s JOIN users u ON u.id=s.user_id
+      WHERE s.token_hash=? AND s.revoked_at IS NULL LIMIT 1
+    ''', [digest]);
+    if (rows.isEmpty) throw StateError('La sesión ya no es válida.');
+    final row = rows.first;
+    final now = DateTime.now();
+    final expiry = DateTime.tryParse(row['expires_at'] as String? ?? '');
+    final lastSeen = DateTime.tryParse(row['last_seen_at'] as String? ?? '');
+    if ((row['active'] as num?)?.toInt() != 1 ||
+        expiry == null || !expiry.isAfter(now) ||
+        lastSeen == null || now.difference(lastSeen) > idleLifetime ||
+        !can(row['role'] as String, permission)) {
+      throw StateError('No tienes permiso para realizar esta operación o tu sesión expiró.');
+    }
   }
 
   void _validateCredentials(String username, String displayName, String password) {
