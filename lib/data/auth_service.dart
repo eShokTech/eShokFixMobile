@@ -44,7 +44,7 @@ class AuthService {
   static const rolePermissions = <String, Set<String>>{
     'ADMIN': {'*'},
     'ENCARGADO': {
-      'dashboard.view', 'clients.view', 'clients.manage',
+      'dashboard.view', 'clients.view', 'clients.manage', 'clients.delete', 'orders.cancel',
       'orders.view', 'orders.manage', 'orders.authorize', 'orders.pay',
       'inventory.view', 'inventory.manage', 'sales.view', 'sales.manage',
       'cash.view', 'cash.manage', 'purchases.view', 'purchases.manage',
@@ -292,12 +292,13 @@ class AuthService {
     await _requirePermission('users.manage');
     _validatePassword(newPassword);
     final salt = _randomBytes(16);
-    await db.update('users', {
+    final changed = await db.update('users', {
       'password_salt': base64Encode(salt),
       'password_hash': base64Encode(_derive(newPassword, salt)),
       'failed_attempts': 0,
       'locked_until': null,
     }, where: 'id=?', whereArgs: [userId]);
+    if (changed == 0) throw StateError('Usuario no encontrado.');
     await db.update('auth_sessions',
         {'revoked_at': DateTime.now().toIso8601String()},
         where: 'user_id=? AND revoked_at IS NULL', whereArgs: [userId]);
