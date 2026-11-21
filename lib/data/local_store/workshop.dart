@@ -73,7 +73,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     });
   }
 
-  Future<List<Map<String, Object?>>> clientDevices(int clientId) => db.query('devices', where: 'client_id=?', whereArgs: [clientId], orderBy: 'id DESC');
+  Future<List<Map<String, Object?>>> clientDevices(int clientId) { requirePermission('clients.view'); return db.query('devices', where: 'client_id=?', whereArgs: [clientId], orderBy: 'id DESC'); }
 
   Future<List<Map<String, Object?>>> orders({String query = '', String status = ''}) async {
     requirePermission('orders.view');
@@ -221,8 +221,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     });
   }
 
-  Future<List<Map<String, Object?>>> orderParts(int orderId) =>
-      db.query('order_parts', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC');
+  Future<List<Map<String, Object?>>> orderParts(int orderId) { requirePermission('orders.view'); return db.query('order_parts', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
 
   Future<void> addOrderPart(
     int orderId,
@@ -456,11 +455,9 @@ extension LocalStoreWorkshopOperations on LocalStore {
     });
   }
 
-  Future<List<Map<String, Object?>>> orderPayments(int orderId) =>
-      db.query('payments', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC');
+  Future<List<Map<String, Object?>>> orderPayments(int orderId) { requirePermission('orders.pay'); return db.query('payments', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
 
-  Future<List<Map<String, Object?>>> orderRefunds(int orderId) =>
-      db.query('order_refunds', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC');
+  Future<List<Map<String, Object?>>> orderRefunds(int orderId) { requirePermission('orders.pay'); return db.query('order_refunds', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
 
   Future<void> cancelOrder(
     int orderId, {
@@ -468,7 +465,6 @@ extension LocalStoreWorkshopOperations on LocalStore {
     required String reason,
   }) async {
     requirePermission('orders.manage');
-    requirePermission('orders.pay');
     requirePermission('orders.pay');
     if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de cancelación.');
     final method = refundMethod.trim().toUpperCase();
@@ -532,11 +528,10 @@ extension LocalStoreWorkshopOperations on LocalStore {
     });
   }
 
-  Future<List<Map<String, Object?>>> orderEvents(int id) => db.query('order_events', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC');
-  Future<List<Map<String, Object?>>> orderEvidence(int id) => db.query('evidences', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC');
+  Future<List<Map<String, Object?>>> orderEvents(int id) { requirePermission('orders.view'); return db.query('order_events', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }
+  Future<List<Map<String, Object?>>> orderEvidence(int id) { requirePermission('orders.view'); return db.query('evidences', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }
   Future<void> addEvidence(int orderId, String path, String caption) async {
     requirePermission('orders.manage');
-    requirePermission('orders.view');
     requirePermission('orders.view');
     final now = _now();
     final id = await db.insert('evidences', {'order_id': orderId, 'file_path': path, 'caption': caption, 'kind': 'photo', 'created_at': now});
