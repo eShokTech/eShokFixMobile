@@ -131,7 +131,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     int warrantyDays = 30,
   }) async {
     requirePermission('orders.manage');
-    if (depositAmount > 0) requirePermission('orders.pay');
+    if (deposit > 0) requirePermission('orders.pay');
     
 
     final inputs = [labor, parts, discount, deposit];
