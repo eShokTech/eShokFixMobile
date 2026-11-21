@@ -24,8 +24,23 @@ También se incluye `CREAR_APK_DESDE_AQUI.bat` como alternativa para compilar de
 - La primera carga necesita Internet para resolver y descargar paquetes y Gradle.
 - La app contiene datos de demostración para probar operaciones locales. No uses información real de clientes en esta beta.
 
-## Estado de esta beta
+## Estado actual
 
-Incluye base local SQLite y módulos para inicio, clientes, órdenes/expedientes, evidencia, historial de pagos, inventario, POS básico, caja, garantías, reportes, proveedores y compras con entrada de existencias y pagos parciales.
+Esta beta trabaja con SQLite local y modo offline-first. Incluye módulos para inicio, clientes, órdenes, diagnóstico, evidencias, pagos, inventario, POS, caja, garantías, reportes, proveedores y compras.
 
-Aún no están conectados el servidor de datos de PC ni la sincronización real. Usuarios y roles siguen siendo un catálogo local, no autenticación/RBAC de producción. Tampoco están conectados el servidor de licencias ni WhatsApp Cloud API. La compra registra varias partidas de artículos ya existentes en el inventario; el flujo de órdenes de compra con recepción parcial y devoluciones aún requiere una fase posterior. Los perfiles de usuario y eventos de WhatsApp que aparecen en esta beta son demostrativos/locales.
+### Usuarios y seguridad local
+
+- En la primera apertura se solicita crear una cuenta administradora. Ya no existe una contraseña predeterminada.
+- Las contraseñas se almacenan como hashes PBKDF2-HMAC-SHA256 con salt aleatorio por usuario, nunca en texto plano.
+- La sesión se guarda en Android Keystore mediante almacenamiento seguro. Tiene una duración máxima de 12 horas y se invalida si la app permanece en segundo plano más de 30 minutos.
+- Cinco intentos fallidos bloquean temporalmente la cuenta durante 15 minutos.
+- Los roles ADMIN, ENCARGADO, TECNICO y CAJA tienen permisos distintos. Los permisos se validan también en la capa de datos, no solo ocultando opciones de pantalla.
+- El administrador puede crear cuentas, cambiar roles, desactivar usuarios y restablecer contraseñas. Al desactivar una cuenta o restablecer su contraseña se revocan sus sesiones.
+
+### Arquitectura pendiente
+
+- La app aún no se conecta a un servidor. La futura sincronización se hará contra un backend nuevo, diseñado y construido desde cero para eShokFix, no contra la aplicación de escritorio.
+- El servidor, la sincronización multi-dispositivo, el licenciamiento remoto y WhatsApp Cloud API se abordarán en una fase posterior.
+- La autenticación de esta etapa protege las cuentas locales de la instalación. Cuando exista el backend, la identidad y los permisos deberán validarse también en el servidor; una app móvil local no puede ser la autoridad final frente a un dispositivo comprometido o una APK modificada.
+
+Los datos de demostración se incluyen para explorar operaciones locales. Retíralos desde Configuración antes de registrar información real.
