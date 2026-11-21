@@ -89,6 +89,7 @@ class _AuthGateState extends State<AuthGate> {
       final setup = user == null ? await _auth.needsInitialSetup() : false;
       if (mounted) setState(() {
         _user = user;
+        widget.store.setAuthenticatedUser(user);
         _setupRequired = setup;
         _loading = false;
       });
@@ -97,10 +98,14 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
-  void _authenticated(AuthUser user) => setState(() => _user = user);
+  void _authenticated(AuthUser user) {
+    widget.store.setAuthenticatedUser(user);
+    setState(() => _user = user);
+  }
 
   Future<void> _logout() async {
     await _auth.logout();
+    widget.store.setAuthenticatedUser(null);
     if (mounted) setState(() => _user = null);
   }
 
