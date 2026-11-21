@@ -8,6 +8,7 @@ extension LocalStorePurchaseReceivingOperations on LocalStore {
   ) async {
     requirePermission('purchases.manage');
     
+    
 
     if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad recibida debe ser mayor a cero.');
     final now = _now();
@@ -65,13 +66,14 @@ extension LocalStorePurchaseReceivingOperations on LocalStore {
     });
   }
 
-  Future<void> returnPurchaseItem({ requirePermission('purchases.manage');
+  Future<void> returnPurchaseItem({ 
     required int purchaseId,
     required int purchaseItemId,
     required double quantity,
     String refundMethod = 'EFECTIVO',
     required String reason,
   }) async {
+    requirePermission('purchases.manage');
     
 
     if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad a devolver debe ser mayor a cero.');
