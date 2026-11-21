@@ -1,9 +1,188 @@
 part of '../app.dart';
 
-class UsersPage extends StatefulWidget { const UsersPage({super.key, required this.store}); final LocalStore store; @override State<UsersPage> createState() => _UsersPageState(); }
-class _UsersPageState extends State<UsersPage> { late Future<List<Map<String, Object?>>> _future; @override void initState() { super.initState(); _refresh(); } void _refresh() => _future = widget.store.users(); @override Widget build(BuildContext context) => PageFrame(child: Column(children: [SectionHeading('Usuarios y roles', subtitle: 'Catálogo local de perfiles', trailing: FilledButton.tonalIcon(onPressed: () async { final ok = await showDialog<bool>(context: context, builder: (_) => UserDialog(store: widget.store)); if (ok == true && mounted) setState(_refresh); }, icon: const Icon(Icons.person_add_alt, size: 17), label: const Text('Nuevo'))), const SizedBox(height: 12), GlassCard(child: const Text('En esta beta se administra el catálogo de usuarios de prueba. La autenticación segura, permisos efectivos por operación y sesiones se conectarán al servidor de licencias/API antes de producción.', style: TextStyle(fontSize: 10, color: Color(0xFF7E7489), height: 1.4))), const SizedBox(height: 10), Expanded(child: FutureBuilder<List<Map<String, Object?>>>(future: _future, builder: (context, snap) { if (!snap.hasData) return const Center(child: CircularProgressIndicator()); return ListView(children: snap.data!.map((u) => Padding(padding: const EdgeInsets.only(top: 7), child: GlassCard(child: Row(children: [const Icon(Icons.account_circle_outlined, color: eShokPurple, size: 27), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_str(u['display_name']), style: const TextStyle(fontWeight: FontWeight.w800)), Text('@${_str(u['username'])} · ${_str(u['role'])}', style: const TextStyle(fontSize: 10, color: Color(0xFF81778D)))])), Text(_num(u['active']) == 1 ? 'ACTIVO' : 'INACTIVO', style: const TextStyle(fontSize: 9, color: Color(0xFF29966F), fontWeight: FontWeight.w900))])))).toList()); }))])); }
-class UserDialog extends StatefulWidget { const UserDialog({super.key, required this.store}); final LocalStore store; @override State<UserDialog> createState() => _UserDialogState(); }
-class _UserDialogState extends State<UserDialog> { final username = TextEditingController(); final name = TextEditingController(); String role = 'TECNICO'; @override void dispose() { username.dispose(); name.dispose(); super.dispose(); } @override Widget build(BuildContext context) => AlertDialog(title: const Text('Nuevo usuario'), content: Column(mainAxisSize: MainAxisSize.min, children: [_field(username, 'Usuario', required: true), const SizedBox(height: 8), _field(name, 'Nombre visible', required: true), const SizedBox(height: 8), DropdownButtonFormField<String>(value: role, decoration: const InputDecoration(labelText: 'Rol'), items: const ['ADMIN','ENCARGADO','TECNICO','CAJA'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => role = v ?? role))]), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')), FilledButton(onPressed: () async { if (username.text.trim().isEmpty || name.text.trim().isEmpty) return; try { await widget.store.saveUser(username: username.text, name: name.text, role: role); if (context.mounted) Navigator.pop(context, true); } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } }, child: const Text('Guardar'))]); }
+class UsersPage extends StatefulWidget {
+  const UsersPage({super.key, required this.store});
+  final LocalStore store;
+  @override
+  State<UsersPage> createState() => _UsersPageState();
+}
+
+class _UsersPageState extends State<UsersPage> {
+  late final AuthService _auth = AuthService(widget.store.db);
+  late Future<List<Map<String, Object?>>> _future = _auth.users();
+
+  void _refresh() => setState(() => _future = _auth.users());
+
+  Future<void> _create() async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => UserDialog(auth: _auth),
+    );
+    if (saved == true && mounted) _refresh();
+  }
+
+  Future<void> _changeUser(Map<String, Object?> user, {String? role, bool? active}) async {
+    try {
+      await _auth.updateUser(
+        id: user['id'] as int,
+        displayName: user['display_name'] as String,
+        role: role ?? user['role'] as String,
+        active: active ?? _num(user['active']) == 1,
+      );
+      _refresh();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$error')),
+      );
+    }
+  }
+
+  Future<void> _resetPassword(Map<String, Object?> user) async {
+    final controller = TextEditingController();
+    final confirm = TextEditingController();
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Restablecer contraseña de @${user['username']}'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: controller, obscureText: true, decoration: const InputDecoration(labelText: 'Nueva contraseña')),
+          const SizedBox(height: 10),
+          TextField(controller: confirm, obscureText: true, decoration: const InputDecoration(labelText: 'Confirmar contraseña')),
+          const SizedBox(height: 8),
+          const Text('Mínimo 10 caracteres, mayúscula, minúscula y número.', style: TextStyle(fontSize: 10)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Restablecer')),
+        ],
+      ),
+    );
+    if (accepted == true) {
+      try {
+        if (controller.text != confirm.text) throw ArgumentError('Las contraseñas no coinciden.');
+        await _auth.resetPassword(user['id'] as int, controller.text);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Contraseña restablecida. Las sesiones anteriores fueron cerradas.')),
+        );
+      } catch (error) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
+    controller.dispose();
+    confirm.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PageFrame(child: Column(children: [
+    SectionHeading(
+      'Usuarios y permisos',
+      subtitle: 'Cuentas locales protegidas por contraseña y rol',
+      trailing: FilledButton.tonalIcon(onPressed: _create, icon: const Icon(Icons.person_add_alt, size: 17), label: const Text('Nuevo')),
+    ),
+    const SizedBox(height: 12),
+    Expanded(child: FutureBuilder<List<Map<String, Object?>>>(
+      future: _future,
+      builder: (context, snap) {
+        if (snap.hasError) return Center(child: Text('No se pudieron cargar los usuarios: ${snap.error}'));
+        if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+        return ListView(children: snap.data!.map((user) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: GlassCard(child: Column(children: [
+            Row(children: [
+              const Icon(Icons.account_circle_outlined, color: eShokPurple, size: 28),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(_str(user['display_name']), style: const TextStyle(fontWeight: FontWeight.w800)),
+                Text('@${_str(user['username'])}', style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+              ])),
+              Switch(value: _num(user['active']) == 1, onChanged: (value) => _changeUser(user, active: value)),
+            ]),
+            Row(children: [
+              const Text('Rol', style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+              const SizedBox(width: 10),
+              Expanded(child: DropdownButton<String>(
+                isExpanded: true,
+                value: _str(user['role']),
+                items: const ['ADMIN','ENCARGADO','TECNICO','CAJA'].map((role) => DropdownMenuItem(value: role, child: Text(role))).toList(),
+                onChanged: (role) { if (role != null) _changeUser(user, role: role); },
+              )),
+              IconButton(tooltip: 'Restablecer contraseña', onPressed: () => _resetPassword(user), icon: const Icon(Icons.password_outlined, color: eShokPurple)),
+            ]),
+            Align(alignment: Alignment.centerLeft, child: Text(
+              user['last_login_at'] == null ? 'Sin inicio de sesión registrado' : 'Último acceso: ${_date(user['last_login_at'])}',
+              style: const TextStyle(fontSize: 9, color: Color(0xFF968DA0)),
+            )),
+          ])),
+        )).toList());
+      },
+    )),
+  ]));
+}
+
+class UserDialog extends StatefulWidget {
+  const UserDialog({super.key, required this.auth});
+  final AuthService auth;
+  @override
+  State<UserDialog> createState() => _UserDialogState();
+}
+
+class _UserDialogState extends State<UserDialog> {
+  final username = TextEditingController();
+  final name = TextEditingController();
+  final password = TextEditingController();
+  String role = 'TECNICO';
+  bool busy = false;
+
+  @override
+  void dispose() {
+    username.dispose();
+    name.dispose();
+    password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() => busy = true);
+    try {
+      await widget.auth.createUser(
+        username: username.text,
+        displayName: name.text,
+        role: role,
+        password: password.text,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Nuevo usuario'),
+    content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      _field(username, 'Usuario', required: true),
+      const SizedBox(height: 8),
+      _field(name, 'Nombre visible', required: true),
+      const SizedBox(height: 8),
+      TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Contraseña inicial')),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        value: role,
+        decoration: const InputDecoration(labelText: 'Rol'),
+        items: const ['ADMIN','ENCARGADO','TECNICO','CAJA'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+        onChanged: (v) => setState(() => role = v ?? role),
+      ),
+      const SizedBox(height: 8),
+      const Text('Mínimo 10 caracteres, con mayúscula, minúscula y número.', style: TextStyle(fontSize: 10)),
+    ])),
+    actions: [
+      TextButton(onPressed: busy ? null : () => Navigator.pop(context, false), child: const Text('Cancelar')),
+      FilledButton(onPressed: busy ? null : _save, child: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Guardar')),
+    ],
+  );
+}
 
 class SettingsPage extends StatefulWidget { const SettingsPage({super.key, required this.store, required this.open}); final LocalStore store; final ValueChanged<String> open; @override State<SettingsPage> createState() => _SettingsPageState(); }
 class _SettingsPageState extends State<SettingsPage> {
