@@ -74,7 +74,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 3,
+      version: 4,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -96,6 +96,8 @@ class LocalStore {
           discount REAL NOT NULL DEFAULT 0, total REAL NOT NULL DEFAULT 0,
           paid REAL NOT NULL DEFAULT 0, deposit REAL NOT NULL DEFAULT 0,
           warranty_days INTEGER NOT NULL DEFAULT 30, notes TEXT DEFAULT '', is_demo INTEGER NOT NULL DEFAULT 0,
+          authorization_status TEXT NOT NULL DEFAULT 'PENDING', authorized_at TEXT,
+          authorized_by TEXT DEFAULT '', authorization_method TEXT DEFAULT '', authorization_note TEXT DEFAULT '',
           FOREIGN KEY(client_id) REFERENCES clients(id), FOREIGN KEY(device_id) REFERENCES devices(id))''');
         batch.execute('''CREATE TABLE order_events(
           id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL,
@@ -177,6 +179,13 @@ class LocalStore {
         }
         if (oldVersion < 3) {
           await _createOrderPartsTable(db);
+        }
+        if (oldVersion < 4) {
+          await db.execute("ALTER TABLE service_orders ADD COLUMN authorization_status TEXT NOT NULL DEFAULT 'PENDING'");
+          await db.execute("ALTER TABLE service_orders ADD COLUMN authorized_at TEXT");
+          await db.execute("ALTER TABLE service_orders ADD COLUMN authorized_by TEXT DEFAULT ''");
+          await db.execute("ALTER TABLE service_orders ADD COLUMN authorization_method TEXT DEFAULT ''");
+          await db.execute("ALTER TABLE service_orders ADD COLUMN authorization_note TEXT DEFAULT ''");
         }
       },
     );
@@ -420,6 +429,64 @@ class LocalStore {
     });
   }
 
+  Future<void> authorizeOrder(
+    int id, {
+    required String authorizedBy,
+    required String method,
+    String note = '',
+  }) async {
+    if (authorizedBy.trim().isEmpty) {
+      throw ArgumentError('Registra quién autorizó el servicio.');
+    }
+    final now = _now();
+    await db.transaction((tx) async {
+      final rows = await tx.query(
+        'service_orders',
+        columns: ['folio', 'status'],
+        where: 'id=?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw StateError('Orden no encontrada.');
+      if (rows.first['status'] != 'ESPERA_AUTORIZACION') {
+        throw StateError('La orden debe estar en espera de autorización para registrar el consentimiento.');
+      }
+      await tx.update('service_orders', {
+        'authorization_status': 'APPROVED',
+        'authorized_at': now,
+        'authorized_by': authorizedBy.trim(),
+        'authorization_method': method,
+        'authorization_note': note.trim(),
+      }, where: 'id=?', whereArgs: [id]);
+      await tx.insert('order_events', {
+        'order_id': id,
+        'from_status': 'ESPERA_AUTORIZACION',
+        'to_status': 'ESPERA_AUTORIZACION',
+        'description': 'Autorización del cliente registrada · ${authorizedBy.trim()} · $method',
+        'created_at': now,
+      });
+      await tx.insert('audit_log', {
+        'entity': 'service_order',
+        'entity_id': id,
+        'action': 'CUSTOMER_AUTHORIZED',
+        'detail': '${authorizedBy.trim()} · $method · ${note.trim()}',
+        'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'service_order',
+        'entity_id': id,
+        'operation': 'CUSTOMER_AUTHORIZED',
+        'payload': jsonEncode({
+          'authorized_by': authorizedBy.trim(),
+          'method': method,
+          'note': note.trim(),
+          'authorized_at': now,
+        }),
+        'created_at': now,
+      });
+    });
+  }
+
   Future<void> updateDiagnosis(int id, String diagnosis, String notes) async {
     final now = _now();
     await db.update('service_orders', {'diagnosis': diagnosis.trim(), 'notes': notes.trim()}, where: 'id=?', whereArgs: [id]);
@@ -434,6 +501,10 @@ class LocalStore {
     final old = current['status'] as String;
     if (!OrderWorkflow.canTransition(old, next)) throw StateError('No se permite pasar de ${OrderWorkflow.label(old)} a ${OrderWorkflow.label(next)}.');
     if (old == next) return;
+    if (const {'ESPERA_REFACCION', 'REPARACION'}.contains(next) &&
+        current['authorization_status'] != 'APPROVED') {
+      throw StateError('Primero registra la autorización del cliente.');
+    }
     final now = _now();
     await db.transaction((tx) async {
       await tx.update('service_orders', {'status': next, if (next == 'ENTREGADO') 'delivered_at': now}, where: 'id=?', whereArgs: [id]);
