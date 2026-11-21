@@ -18,14 +18,6 @@ class _SalesPageState extends State<SalesPage> {
 
   void _refresh() => _future = widget.store.sales();
 
-  Future<void> _newSale() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => SaleDialog(store: widget.store),
-    );
-    if (ok == true && mounted) setState(_refresh);
-  }
-
   Future<void> _openSale(Map<String, Object?> sale) async {
     final updated = await showDialog<bool>(
       context: context,
@@ -36,65 +28,48 @@ class _SalesPageState extends State<SalesPage> {
 
   @override
   Widget build(BuildContext context) => PageFrame(
-    child: Column(children: [
-      SectionHeading(
-        'Punto de venta',
-        subtitle: 'Ventas de mostrador y tickets',
-        trailing: FilledButton.tonalIcon(
-          onPressed: _newSale,
-          icon: const Icon(Icons.add_shopping_cart, size: 17),
-          label: const Text('Nueva venta'),
-        ),
+    child: ListView(children: [
+      SaleDialog(
+        store: widget.store,
+        embedded: true,
+        onSaved: () {
+          if (mounted) setState(_refresh);
+        },
       ),
-      const SizedBox(height: 12),
-      GlassCard(child: Row(children: [
-        const Icon(Icons.receipt_long_outlined, color: eShokPurple, size: 25),
-        const SizedBox(width: 10),
-        const Expanded(child: Text(
-          'Arma ventas con varios productos y servicios, descuenta inventario y registra el cobro en caja en una sola operación.',
-          style: TextStyle(fontSize: 10, color: Color(0xFF786F83), height: 1.35),
-        )),
-      ])),
-      const SizedBox(height: 10),
-      Expanded(
-        child: FutureBuilder<List<Map<String, Object?>>>(
-          future: _future,
-          builder: (context, snap) {
-            if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
-            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-            final rows = snap.data!;
-            if (rows.isEmpty) return const EmptyState(
-              title: 'Sin ventas',
-              message: 'Registra una venta para comenzar el historial.',
+      const SizedBox(height: 8),
+      const SectionHeading('Ventas recientes', subtitle: 'Consulta tickets y movimientos de venta'),
+      const SizedBox(height: 6),
+      FutureBuilder<List<Map<String, Object?>>>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.hasError) return Text('Error: ${snap.error}');
+          if (!snap.hasData) {
+            return const Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: CircularProgressIndicator()),
             );
-            return ListView.builder(
-              itemCount: rows.length,
-              itemBuilder: (_, i) {
-                final sale = rows[i];
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: GlassCard(child: ListTile(
-                    onTap: () => _openSale(sale),
-                    leading: const Icon(Icons.receipt_outlined, color: eShokPurple),
-                    title: Text(_str(sale['folio']), style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: Text(
-                      '${_date(sale['created_at'])} · ${_str(sale['payment_method'])} · ${_str(sale['client_name'], 'Venta de mostrador')}',
-                      style: const TextStyle(fontSize: 9, color: Color(0xFF8A8095)),
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(_money(sale['total']), style: const TextStyle(fontWeight: FontWeight.w900)),
-                        const Text('VER TICKET', style: TextStyle(fontSize: 8, color: eShokPurple, fontWeight: FontWeight.w800)),
-                      ],
-                    ),
-                  )),
-                );
-              },
+          }
+          final rows = snap.data!;
+          if (rows.isEmpty) {
+            return const EmptyState(
+              title: 'Sin ventas registradas',
+              message: 'Las ventas que cobres desde este punto de venta aparecerán aquí.',
             );
-          },
-        ),
+          }
+          return Column(children: rows.map((sale) => Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: GlassCard(child: ListTile(
+              onTap: () => _openSale(sale),
+              leading: const Icon(Icons.receipt_outlined, color: eShokPurple),
+              title: Text(_str(sale['folio']), style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text(
+                '${_date(sale['created_at'])} · ${_str(sale['payment_method'])} · ${_str(sale['client_name'], 'Venta de mostrador')}',
+                style: const TextStyle(fontSize: 9, color: Color(0xFF8A8095)),
+              ),
+              trailing: Text(_money(sale['total']), style: const TextStyle(fontWeight: FontWeight.w900)),
+            )),
+          )).toList());
+        },
       ),
     ]),
   );
@@ -120,8 +95,15 @@ class _SaleLineDraft {
 }
 
 class SaleDialog extends StatefulWidget {
-  const SaleDialog({super.key, required this.store});
+  const SaleDialog({
+    super.key,
+    required this.store,
+    this.embedded = false,
+    this.onSaved,
+  });
   final LocalStore store;
+  final bool embedded;
+  final VoidCallback? onSaved;
   @override
   State<SaleDialog> createState() => _SaleDialogState();
 }
@@ -247,7 +229,32 @@ class _SaleDialogState extends State<SaleDialog> {
         discount: discountValue,
         notes: notes.text,
       );
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) {
+        if (widget.embedded) {
+          for (final line in _lines) {
+            line.dispose();
+          }
+          setState(() {
+            _lines
+              ..clear()
+              ..add(_SaleLineDraft());
+            clientId = null;
+            discount.text = '0';
+            notes.clear();
+            splitAmount.text = '0';
+            method = 'EFECTIVO';
+            secondPaymentMethod = 'TARJETA';
+            splitPayment = false;
+            saving = false;
+          });
+          widget.onSaved?.call();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Venta cobrada correctamente.')),
+          );
+        } else {
+          Navigator.pop(context, true);
+        }
+      }
     } catch (e) {
       if (mounted) {
         setState(() => saving = false);
@@ -380,9 +387,12 @@ class _SaleDialogState extends State<SaleDialog> {
         ),
       ])),
       actions: [
-        TextButton(onPressed: saving ? null : () => Navigator.pop(context, false), child: const Text('Cancelar')),
-        FilledButton(onPressed: saving ? null : _save,
-          child: Text(saving ? 'Procesando…' : 'Cobrar venta')),
+        if (!widget.embedded)
+          TextButton(onPressed: saving ? null : () => Navigator.pop(context, false), child: const Text('Cancelar')),
+        FilledButton(
+          onPressed: saving ? null : _save,
+          child: Text(saving ? 'Procesando…' : 'Cobrar venta'),
+        ),
       ],
     );
   }
