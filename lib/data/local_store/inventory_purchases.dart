@@ -1,6 +1,7 @@
 part of '../local_store.dart';
 
-extension LocalStoreInventoryPurchaseOperations on LocalStore {  Future<List<Map<String, Object?>>> inventory({ String query = ''}) {
+extension LocalStoreInventoryPurchaseOperations on LocalStore {
+  Future<List<Map<String, Object?>>> inventory({ String query = ''}) {
     requirePermission('inventory.view');
     final q = '%${query.trim()}%';
     return db.rawQuery('SELECT * FROM inventory_items WHERE name LIKE ? OR COALESCE(sku,\'\') LIKE ? ORDER BY name COLLATE NOCASE', [q, q]);
