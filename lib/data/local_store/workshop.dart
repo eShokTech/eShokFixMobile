@@ -1,6 +1,7 @@
 part of '../local_store.dart';
 
-extension LocalStoreWorkshopOperations on LocalStore {  Future<Map<String, Object?>> dashboard() async {
+extension LocalStoreWorkshopOperations on LocalStore {
+  Future<Map<String, Object?>> dashboard() async {
     requirePermission('dashboard.view');
     
     
@@ -556,8 +557,10 @@ extension LocalStoreWorkshopOperations on LocalStore {  Future<Map<String, Objec
     });
   }
   Future<List<Map<String, Object?>>> orderEvents(int id) {
-    requirePermission('orders.view'); return db.query('order_events', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }  Future<List<Map<String, Object?>>> orderEvidence(int id) {
-    requirePermission('orders.view'); return db.query('evidences', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }  Future<void> addEvidence(int orderId, String path, String caption) async {
+    requirePermission('orders.view'); return db.query('order_events', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }
+  Future<List<Map<String, Object?>>> orderEvidence(int id) {
+    requirePermission('orders.view'); return db.query('evidences', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC'); }
+  Future<void> addEvidence(int orderId, String path, String caption) async {
     requirePermission('orders.manage');
     
     
