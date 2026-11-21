@@ -6,6 +6,7 @@ extension LocalStorePurchaseReceivingOperations on LocalStore {
     int purchaseItemId,
     double quantity,
   ) async {
+    requirePermission('purchases.manage');
     if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad recibida debe ser mayor a cero.');
     final now = _now();
     await db.transaction((tx) async {
@@ -69,6 +70,7 @@ extension LocalStorePurchaseReceivingOperations on LocalStore {
     String refundMethod = 'EFECTIVO',
     required String reason,
   }) async {
+    requirePermission('purchases.manage');
     if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad a devolver debe ser mayor a cero.');
     if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de la devolución.');
     final method = refundMethod.trim().toUpperCase();
