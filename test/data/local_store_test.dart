@@ -361,4 +361,70 @@ void main() {
     );
   });
 
+
+  test('global search finds real clients and inventory items without exposing demo data', () async {
+    await store.saveClient(
+      name: 'Nadia Global Search',
+      phone: '8991234567',
+      whatsapp: '8991234567',
+    );
+    await store.saveInventoryItem(
+      name: 'Batería Global Search',
+      sku: 'ESH-GLOBAL-2026',
+      stock: 8,
+      minStock: 2,
+      cost: 100,
+      price: 180,
+    );
+
+    final clientResults = await store.globalSearch('Nadia Global');
+    expect(
+      clientResults.any((row) =>
+        row['type'] == 'CLIENTE' && row['title'] == 'Nadia Global Search'),
+      isTrue,
+    );
+
+    final productResults = await store.globalSearch('ESH-GLOBAL-2026');
+    expect(
+      productResults.any((row) =>
+        row['type'] == 'PRODUCTO' && row['title'] == 'Batería Global Search'),
+      isTrue,
+    );
+
+    final demoResults = await store.globalSearch('Cliente de demostración');
+    expect(demoResults.any((row) => row['type'] == 'CLIENTE'), isFalse);
+  });
+
+  test('operational notifications are persisted, permission-filtered and markable as read', () async {
+    final itemId = await store.saveInventoryItem(
+      name: 'Refacción con stock crítico',
+      sku: 'TEST-LOW-STOCK',
+      stock: 1,
+      minStock: 3,
+      cost: 50,
+      price: 100,
+    );
+
+    await store.refreshOperationalNotifications();
+    final unread = await store.notifications(unreadOnly: true);
+    final alert = unread.where((row) =>
+      row['type'] == 'LOW_STOCK' && row['target_id'] == itemId);
+    expect(alert, hasLength(1));
+
+    await store.markNotificationRead(alert.single['id'] as int);
+    final unreadAfter = await store.notifications(unreadOnly: true);
+    expect(
+      unreadAfter.any((row) =>
+        row['type'] == 'LOW_STOCK' && row['target_id'] == itemId),
+      isFalse,
+    );
+
+    final allActive = await store.notifications();
+    expect(
+      allActive.any((row) =>
+        row['type'] == 'LOW_STOCK' && row['target_id'] == itemId),
+      isTrue,
+    );
+  });
+
 }

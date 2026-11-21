@@ -12,6 +12,7 @@ part 'local_store/inventory_purchases.dart';
 part 'local_store/sales.dart';
 part 'local_store/purchase_receiving.dart';
 part 'local_store/finance_admin.dart';
+part 'local_store/ecosystem.dart';
 
 Future<void> _recordInventoryMovement(
   DatabaseExecutor db,
@@ -30,6 +31,24 @@ Future<void> _recordInventoryMovement(
   });
 }
 
+
+Future<void> _createAppNotificationsTable(DatabaseExecutor db) async {
+  await db.execute('''CREATE TABLE IF NOT EXISTS app_notifications(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    severity TEXT NOT NULL DEFAULT 'INFO',
+    target_view TEXT NOT NULL,
+    target_id INTEGER,
+    required_permission TEXT NOT NULL DEFAULT 'dashboard.view',
+    created_at TEXT NOT NULL,
+    read_at TEXT,
+    resolved_at TEXT
+  )''');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_app_notifications_active ON app_notifications(resolved_at, read_at, created_at)');
+}
 
 Future<void> _createOrderRefundTable(DatabaseExecutor db) async {
   await db.execute('''CREATE TABLE IF NOT EXISTS order_refunds(
@@ -195,7 +214,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 9,
+      version: 10,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -306,6 +325,7 @@ class LocalStore {
         await _createOrderPartsTable(db);
         await _createFinancialTables(db);
         await _createOrderRefundTable(db);
+        await _createAppNotificationsTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -361,6 +381,9 @@ class LocalStore {
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)''');
           await db.execute('CREATE INDEX idx_auth_sessions_user ON auth_sessions(user_id, revoked_at)');
         }
+        if (oldVersion < 10) {
+          await _createAppNotificationsTable(db);
+        }
       },
     );
     _instance = LocalStore._(database);
@@ -404,7 +427,7 @@ class LocalStore {
       if (check != 'ok') throw StateError('La copia no pasó la verificación de integridad de SQLite.');
       final versionRows = await verification.rawQuery('PRAGMA user_version');
       final version = (versionRows.first.values.first as num).toInt();
-      if (version < 1 || version > 9) {
+      if (version < 1 || version > 10) {
         throw StateError('La versión de la copia ($version) no es compatible con esta app.');
       }
       final requiredTables = await verification.rawQuery('''
