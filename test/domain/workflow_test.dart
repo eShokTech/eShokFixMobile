@@ -26,4 +26,25 @@ void main() {
       expect(OrderWorkflow.label('LISTO'), 'Listo para entregar');
     });
   });
+
+  group('PurchaseAccounting', () {
+    test('calculates line and purchase totals', () {
+      expect(PurchaseAccounting.lineTotal(3, 125), 375);
+      expect(PurchaseAccounting.total(375, 25), 350);
+    });
+
+    test('keeps balances non-negative', () {
+      expect(PurchaseAccounting.balance(350, 100), 250);
+      expect(PurchaseAccounting.balance(350, 400), 0);
+      expect(PurchaseAccounting.total(100, 150), 0);
+    });
+
+    test('classifies pending, partial and paid purchases', () {
+      expect(PurchaseAccounting.paymentStatus(350, 0), 'PENDIENTE');
+      expect(PurchaseAccounting.paymentStatus(350, 100), 'PARCIAL');
+      expect(PurchaseAccounting.paymentStatus(350, 350), 'PAGADA');
+      expect(PurchaseAccounting.paymentStatus(350, 351), 'PAGADA');
+    });
+  });
+
 }
