@@ -3,6 +3,7 @@ part of '../local_store.dart';
 extension LocalStoreFinanceAdminOperations on LocalStore {
   Future<Map<String, double>> cashSummary() async {
     requirePermission('cash.view');
+
     const period = "created_at > COALESCE((SELECT MAX(closed_at) FROM cash_cuts),'0000-01-01')";
     final cashRows = await db.rawQuery('''SELECT
       COALESCE(SUM(CASE WHEN movement_type='IN' THEN amount ELSE -amount END),0) balance,
@@ -32,6 +33,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     String paymentMethod = 'EFECTIVO',
   }) async {
     requirePermission('cash.manage');
+
     if (!amount.isFinite || amount <= 0) throw ArgumentError('El importe debe ser mayor a cero y válido.');
     if (concept.trim().isEmpty) throw ArgumentError('El concepto es obligatorio.');
     final normalizedMethod = paymentMethod.trim().toUpperCase();
@@ -55,6 +57,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<void> closeCashCut(double counted, String notes) async {
     requirePermission('cash.manage');
+
     if (!counted.isFinite || counted < 0) throw ArgumentError('El efectivo contado debe ser un importe válido no negativo.');
     final now = _now();
     await db.transaction((tx) async {
@@ -92,6 +95,10 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     requirePermission('reports.view');
     requirePermission('warranties.view');
     requirePermission('cash.view');
+    requirePermission('cash.view');
+
+
+
     final orders = await db.rawQuery("SELECT COALESCE(SUM(total),0) total, COALESCE(SUM(paid),0) paid, COUNT(*) count FROM service_orders WHERE status!='CANCELADO'");
     final sales = await db.rawQuery("SELECT COALESCE(SUM(total - COALESCE(refunded_total,0)),0) total, SUM(CASE WHEN status!='VOID' THEN 1 ELSE 0 END) count FROM sales");
     final cash = await cashSummary();
@@ -100,11 +107,13 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<String> setting(String key, {String fallback = ''}) async {
     requirePermission('settings.view');
+
     final rows = await db.query('settings', columns: ['value'], where: 'key=?', whereArgs: [key], limit: 1);
     return rows.isEmpty ? fallback : rows.first['value'] as String;
   }
   Future<void> saveSetting(String key, String value) async {
     requirePermission('settings.manage');
+
     await db.insert('settings', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -113,6 +122,8 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
   Future<Map<String, int>> demoDataCounts() async {
     requirePermission('settings.manage');
     requirePermission('users.manage');
+
+
     final clientsCount = Sqflite.firstIntValue(
       await db.rawQuery('SELECT COUNT(*) FROM clients WHERE is_demo=1'),
     ) ?? 0;
@@ -127,6 +138,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<void> removeDemoData() async {
     requirePermission('settings.manage');
+
     await db.transaction((tx) async {
       final demoOrders = await tx.query(
         'service_orders', columns: ['id'], where: 'is_demo=1',
