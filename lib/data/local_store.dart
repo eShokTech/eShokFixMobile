@@ -325,7 +325,7 @@ class LocalStore {
       if (check != 'ok') throw StateError('La copia no pasó la verificación de integridad de SQLite.');
       final versionRows = await verification.rawQuery('PRAGMA user_version');
       final version = (versionRows.first.values.first as num).toInt();
-      if (version < 1 || version > 6) {
+      if (version < 1 || version > 8) {
         throw StateError('La versión de la copia ($version) no es compatible con esta app.');
       }
       final requiredTables = await verification.rawQuery('''

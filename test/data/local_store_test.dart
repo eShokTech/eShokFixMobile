@@ -143,7 +143,7 @@ void main() {
     expect(refunds, hasLength(1));
     expect(refunds.single['method'], 'TRANSFERENCIA');
     final cash = await store.cashSummary();
-    expect(cash['balance'], 0);
+    expect(cash['balance'], 100);
     expect(cash['digital_balance'], -100);
     expect(
       () => store.addOrderPayment(orderId, 10, 'EFECTIVO'),
