@@ -976,8 +976,9 @@ class _SalesPageState extends State<SalesPage> {
 }
 
 class _SaleLineDraft {
-  _SaleLineDraft({this.itemId})
-      : description = TextEditingController(),
+  _SaleLineDraft()
+      : itemId = null,
+        description = TextEditingController(),
         quantity = TextEditingController(text: '1'),
         unitPrice = TextEditingController(text: '0');
 
