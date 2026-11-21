@@ -422,6 +422,14 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
     final result = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Diagnóstico técnico'), content: SizedBox(width: 480, child: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: d, maxLines: 4, decoration: const InputDecoration(labelText: 'Diagnóstico')), const SizedBox(height: 8), TextField(controller: n, maxLines: 3, decoration: const InputDecoration(labelText: 'Notas internas'))])), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Guardar'))]));
     if (result == true) { await widget.store.updateDiagnosis(widget.orderId, d.text, n.text); if (mounted) setState(_refresh); }
   }
+  Future<void> _addPart() async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => OrderPartDialog(store: widget.store, orderId: widget.orderId),
+    );
+    if (saved == true && mounted) setState(_refresh);
+  }
+
   Future<void> _payment(double balance) async {
     final amount = TextEditingController(text: balance.toStringAsFixed(2));
     final ref = TextEditingController();
@@ -488,6 +496,35 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         GlassCard(child: Column(children: [
           _detail('Falla reportada', _str(o['failure_description'])), _detail('Diagnóstico', _str(o['diagnosis'], 'Pendiente')), _detail('IMEI', _str(o['imei'], 'No registrado')), _detail('Serie', _str(o['serial'], 'No registrada')), _detail('Color', _str(o['color'], 'No registrado')), _detail('Accesorios', _str(o['accessories'], 'No registrados')), _detail('Estado físico', _str(o['condition_note'], 'No registrado')), _detail('Técnico', _str(o['technician'], 'Sin asignar')),
         ])),
+        const SizedBox(height: 12),
+        Row(children: [
+          const Expanded(child: SectionHeading('Refacciones y materiales')),
+          FilledButton.tonalIcon(
+            onPressed: status == 'ENTREGADO' || status == 'CANCELADO' ? null : _addPart,
+            icon: const Icon(Icons.add, size: 17),
+            label: const Text('Agregar'),
+          ),
+        ]),
+        const SizedBox(height: 7),
+        FutureBuilder<List<Map<String, Object?>>>(
+          future: widget.store.orderParts(widget.orderId),
+          builder: (context, partsSnap) {
+            if (!partsSnap.hasData) return const LinearProgressIndicator();
+            final rows = partsSnap.data!;
+            if (rows.isEmpty) return const EmptyState(
+              title: 'Sin refacciones asignadas',
+              message: 'Las piezas agregadas aquí descuentan existencias y se suman al total de la orden.',
+            );
+            return GlassCard(child: Column(children: rows.map((part) => ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.build_circle_outlined, color: eShokPurple),
+              title: Text(_str(part['description']), style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text('${_num(part['quantity'])} × ${_money(part['unit_price'])}'),
+              trailing: Text(_money(part['line_total']), style: const TextStyle(fontWeight: FontWeight.w900)),
+            )).toList()));
+          },
+        ),
         const SizedBox(height: 12),
         SectionHeading('Cobros y garantía'),
         const SizedBox(height: 8),
@@ -1458,6 +1495,114 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
           },
           child: Text(saving ? 'Guardando…' : 'Registrar abono'),
         ),
+      ],
+    );
+  }
+} 
+
+class OrderPartDialog extends StatefulWidget {
+  const OrderPartDialog({super.key, required this.store, required this.orderId});
+  final LocalStore store;
+  final int orderId;
+  @override
+  State<OrderPartDialog> createState() => _OrderPartDialogState();
+}
+
+class _OrderPartDialogState extends State<OrderPartDialog> {
+  List<Map<String, Object?>> _items = [];
+  int? _itemId;
+  final quantity = TextEditingController(text: '1');
+  final price = TextEditingController(text: '0');
+  bool loading = true;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final items = await widget.store.inventory();
+    if (!mounted) return;
+    setState(() {
+      _items = items.where((item) => _num(item['stock']) > 0).toList();
+      if (_items.isNotEmpty) {
+        _itemId = _items.first['id'] as int;
+        price.text = _num(_items.first['price']).toStringAsFixed(2);
+      }
+      loading = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    quantity.dispose();
+    price.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final qty = double.tryParse(quantity.text.trim());
+    final unitPrice = double.tryParse(price.text.trim());
+    if (_itemId == null || qty == null || unitPrice == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Selecciona una refacción e indica cantidad y precio válidos.'),
+      ));
+      return;
+    }
+    setState(() => saving = true);
+    try {
+      await widget.store.addOrderPart(widget.orderId, _itemId!, qty, unitPrice: unitPrice);
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const AlertDialog(
+      content: SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
+    );
+    return AlertDialog(
+      title: const Text('Agregar refacción a la orden'),
+      content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (_items.isEmpty) const EmptyState(
+          title: 'No hay existencias disponibles',
+          message: 'Registra artículos y existencias antes de asignar refacciones a una orden.',
+        ) else DropdownButtonFormField<int>(
+          initialValue: _itemId,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Artículo de inventario'),
+          items: _items.map((item) => DropdownMenuItem(
+            value: item['id'] as int,
+            child: Text('${_str(item['name'])} · stock ${_num(item['stock']).toStringAsFixed(2)}',
+              overflow: TextOverflow.ellipsis),
+          )).toList(),
+          onChanged: (value) {
+            Map<String, Object?>? selected;
+            for (final item in _items) {
+              if (item['id'] == value) { selected = item; break; }
+            }
+            if (selected != null) setState(() {
+              _itemId = value;
+              price.text = _num(selected!['price']).toStringAsFixed(2);
+            });
+          },
+        ),
+        const SizedBox(height: 9),
+        _field(quantity, 'Cantidad', required: true, number: true),
+        const SizedBox(height: 8),
+        _field(price, 'Precio unitario al cliente', required: true, number: true),
+      ])),
+      actions: [
+        TextButton(onPressed: saving ? null : () => Navigator.pop(context, false), child: const Text('Cancelar')),
+        FilledButton(onPressed: saving || _items.isEmpty ? null : _save,
+          child: Text(saving ? 'Guardando…' : 'Agregar refacción')),
       ],
     );
   }
