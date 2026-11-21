@@ -1,8 +1,9 @@
 part of '../app.dart';
 
 class UsersPage extends StatefulWidget {
-  const UsersPage({super.key, required this.store});
+  const UsersPage({super.key, required this.store, required this.currentUser});
   final LocalStore store;
+  final AuthUser currentUser;
   @override
   State<UsersPage> createState() => _UsersPageState();
 }
@@ -85,7 +86,9 @@ class _UsersPageState extends State<UsersPage> {
       builder: (context, snap) {
         if (snap.hasError) return Center(child: Text('No se pudieron cargar los usuarios: ${snap.error}'));
         if (!snap.hasData) return const Center(child: CircularProgressIndicator());
-        return ListView(children: snap.data!.map((user) => Padding(
+        return ListView(children: snap.data!.map((user) {
+          final isCurrentUser = user['id'] == widget.currentUser.id;
+          return Padding(
           padding: const EdgeInsets.only(bottom: 8),
           child: GlassCard(child: Column(children: [
             Row(children: [
@@ -95,7 +98,7 @@ class _UsersPageState extends State<UsersPage> {
                 Text(_str(user['display_name']), style: const TextStyle(fontWeight: FontWeight.w800)),
                 Text('@${_str(user['username'])}', style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
               ])),
-              Switch(value: _num(user['active']) == 1, onChanged: (value) => _changeUser(user, active: value)),
+              Switch(value: _num(user['active']) == 1, onChanged: isCurrentUser ? null : (value) => _changeUser(user, active: value)),
             ]),
             Row(children: [
               const Text('Rol', style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
@@ -104,16 +107,17 @@ class _UsersPageState extends State<UsersPage> {
                 isExpanded: true,
                 value: _str(user['role']),
                 items: const ['ADMIN','ENCARGADO','TECNICO','CAJA'].map((role) => DropdownMenuItem(value: role, child: Text(role))).toList(),
-                onChanged: (role) { if (role != null) _changeUser(user, role: role); },
+                onChanged: isCurrentUser ? null : (role) { if (role != null) _changeUser(user, role: role); },
               )),
-              IconButton(tooltip: 'Restablecer contraseña', onPressed: () => _resetPassword(user), icon: const Icon(Icons.password_outlined, color: eShokPurple)),
+              IconButton(tooltip: 'Restablecer contraseña', onPressed: isCurrentUser ? null : () => _resetPassword(user), icon: const Icon(Icons.password_outlined, color: eShokPurple)),
             ]),
             Align(alignment: Alignment.centerLeft, child: Text(
               user['last_login_at'] == null ? 'Sin inicio de sesión registrado' : 'Último acceso: ${_date(user['last_login_at'])}',
               style: const TextStyle(fontSize: 9, color: Color(0xFF968DA0)),
             )),
           ])),
-        )).toList());
+        );
+        }).toList());
       },
     )),
   ]));
