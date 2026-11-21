@@ -478,7 +478,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     });
   }
 
-  Future<List<Map<String, Object?>>> orderPayments(int orderId) { requirePermission('orders.pay'); return db.query('payments', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
+  Future<List<Map<String, Object?>>> orderPayments(int orderId) { requirePermission('orders.payments.view'); return db.query('payments', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
 
   Future<List<Map<String, Object?>>> orderRefunds(int orderId) { requirePermission('orders.pay'); return db.query('order_refunds', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC'); }
 
