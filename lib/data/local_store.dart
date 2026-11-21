@@ -349,7 +349,7 @@ class LocalStore {
     await db.transaction((tx) async {
       final orderRows = await tx.query(
         'service_orders',
-        columns: ['folio', 'status', 'labor', 'parts_total', 'discount', 'paid'],
+        columns: ['folio', 'status', 'labor', 'parts_total', 'discount', 'paid', 'authorization_status'],
         where: 'id=?',
         whereArgs: [orderId],
         limit: 1,
@@ -357,6 +357,9 @@ class LocalStore {
       if (orderRows.isEmpty) throw StateError('Orden no encontrada.');
       final orderRow = orderRows.first;
       final status = orderRow['status'] as String;
+      if (orderRow['authorization_status'] != 'APPROVED') {
+        throw StateError('Primero registra la autorización del cliente.');
+      }
       if (status == 'ENTREGADO' || status == 'CANCELADO') {
         throw StateError('No se pueden agregar refacciones a una orden cerrada.');
       }
@@ -507,7 +510,15 @@ class LocalStore {
     }
     final now = _now();
     await db.transaction((tx) async {
-      await tx.update('service_orders', {'status': next, if (next == 'ENTREGADO') 'delivered_at': now}, where: 'id=?', whereArgs: [id]);
+      await tx.update('service_orders', {
+        'status': next,
+        if (next == 'ENTREGADO') 'delivered_at': now,
+        if (next == 'ESPERA_AUTORIZACION') 'authorization_status': 'PENDING',
+        if (next == 'ESPERA_AUTORIZACION') 'authorized_at': null,
+        if (next == 'ESPERA_AUTORIZACION') 'authorized_by': '',
+        if (next == 'ESPERA_AUTORIZACION') 'authorization_method': '',
+        if (next == 'ESPERA_AUTORIZACION') 'authorization_note': '',
+      }, where: 'id=?', whereArgs: [id]);
       await tx.insert('order_events', {'order_id': id, 'from_status': old, 'to_status': next, 'description': note.trim().isEmpty ? 'Estado actualizado' : note.trim(), 'created_at': now});
       if (next == 'LISTO') {
         await tx.insert('whatsapp_events', {'order_id': id, 'event_type': 'READY', 'message': 'Tu equipo está listo para recoger. Folio ${current['folio']}.', 'created_at': now});
