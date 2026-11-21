@@ -3,6 +3,7 @@ part of '../local_store.dart';
 extension LocalStoreFinanceAdminOperations on LocalStore {
   Future<Map<String, double>> cashSummary() async {
     requirePermission('cash.view');
+    
 
     const period = "created_at > COALESCE((SELECT MAX(closed_at) FROM cash_cuts),'0000-01-01')";
     final cashRows = await db.rawQuery('''SELECT
@@ -25,14 +26,14 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     };
   }
 
-  Future<void> addCashMovement({
+  Future<void> addCashMovement({ requirePermission('cash.manage');
     required bool income,
     required double amount,
     required String concept,
     String reference = '',
     String paymentMethod = 'EFECTIVO',
   }) async {
-    requirePermission('cash.manage');
+    
 
     if (!amount.isFinite || amount <= 0) throw ArgumentError('El importe debe ser mayor a cero y válido.');
     if (concept.trim().isEmpty) throw ArgumentError('El concepto es obligatorio.');
@@ -57,6 +58,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<void> closeCashCut(double counted, String notes) async {
     requirePermission('cash.manage');
+    
 
     if (!counted.isFinite || counted < 0) throw ArgumentError('El efectivo contado debe ser un importe válido no negativo.');
     final now = _now();
@@ -93,9 +95,10 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<Map<String, double>> reportTotals() async {
     requirePermission('reports.view');
-    requirePermission('warranties.view');
-    requirePermission('cash.view');
-    requirePermission('cash.view');
+    
+    
+    
+    
 
 
 
@@ -107,12 +110,14 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<String> setting(String key, {String fallback = ''}) async {
     requirePermission('settings.view');
+    
 
     final rows = await db.query('settings', columns: ['value'], where: 'key=?', whereArgs: [key], limit: 1);
     return rows.isEmpty ? fallback : rows.first['value'] as String;
   }
   Future<void> saveSetting(String key, String value) async {
     requirePermission('settings.manage');
+    
 
     await db.insert('settings', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
   }
@@ -121,7 +126,8 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<Map<String, int>> demoDataCounts() async {
     requirePermission('settings.manage');
-    requirePermission('users.manage');
+    
+    
 
 
     final clientsCount = Sqflite.firstIntValue(
@@ -138,6 +144,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<void> removeDemoData() async {
     requirePermission('settings.manage');
+    
 
     await db.transaction((tx) async {
       final demoOrders = await tx.query(
