@@ -734,39 +734,440 @@ class MorePage extends StatelessWidget {
 Widget _moduleTile(BuildContext context, String title, String sub, IconData icon, String view, ValueChanged<String> open) => InkWell(onTap: () => open(view), borderRadius: BorderRadius.circular(18), child: GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: 40, height: 40, decoration: BoxDecoration(color: eShokPurpleLight.withValues(alpha: .3), borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: eShokPurple)), const Spacer(), Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)), const SizedBox(height: 3), Text(sub, style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296)))])));
 Widget _statusLine(IconData icon, String title, String state) => Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [Icon(icon, size: 16, color: icon == Icons.check_circle ? const Color(0xFF29966F) : const Color(0xFFB88945)), const SizedBox(width: 8), Expanded(child: Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))), Text(state, style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296)))]));
 
+
 class SalesPage extends StatefulWidget {
-  const SalesPage({super.key, required this.store}); final LocalStore store;
+  const SalesPage({super.key, required this.store});
+  final LocalStore store;
   @override
   State<SalesPage> createState() => _SalesPageState();
 }
+
 class _SalesPageState extends State<SalesPage> {
   late Future<List<Map<String, Object?>>> _future;
+
   @override
-  void initState() { super.initState(); _refresh(); }
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
   void _refresh() => _future = widget.store.sales();
-  Future<void> _newSale() async { final ok = await showDialog<bool>(context: context, builder: (_) => SaleDialog(store: widget.store)); if (ok == true && mounted) setState(_refresh); }
+
+  Future<void> _newSale() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => SaleDialog(store: widget.store),
+    );
+    if (ok == true && mounted) setState(_refresh);
+  }
+
+  Future<void> _openSale(Map<String, Object?> sale) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => SaleDetailDialog(store: widget.store, sale: sale),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) => PageFrame(child: Column(children: [
-    SectionHeading('Punto de venta', subtitle: 'Ventas de mostrador y tickets', trailing: FilledButton.tonalIcon(onPressed: _newSale, icon: const Icon(Icons.add_shopping_cart, size: 17), label: const Text('Nueva venta'))),
-    const SizedBox(height: 12),
-    GlassCard(child: Row(children: [const Icon(Icons.receipt_long_outlined, color: eShokPurple, size: 25), const SizedBox(width: 10), const Expanded(child: Text('Las ventas descuentan inventario y registran el ingreso en caja dentro de una sola transacción local.', style: TextStyle(fontSize: 10, color: Color(0xFF786F83), height: 1.35)))])),
-    const SizedBox(height: 10),
-    Expanded(child: FutureBuilder<List<Map<String, Object?>>>(future: _future, builder: (context, snap) { if (!snap.hasData) return const Center(child: CircularProgressIndicator()); final rows = snap.data!; if (rows.isEmpty) return const EmptyState(title: 'Sin ventas', message: 'Registra una venta para comenzar el historial.'); return ListView.builder(itemCount: rows.length, itemBuilder: (_, i) { final sale = rows[i]; return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Row(children: [const Icon(Icons.receipt_outlined, color: eShokPurple), const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_str(sale['folio']), style: const TextStyle(fontWeight: FontWeight.w800)), Text('${_date(sale['created_at'])} · ${_str(sale['payment_method'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF8A8095)))])), Text(_money(sale['total']), style: const TextStyle(fontWeight: FontWeight.w900))]))); }); })),
-  ]));
+  Widget build(BuildContext context) => PageFrame(
+    child: Column(children: [
+      SectionHeading(
+        'Punto de venta',
+        subtitle: 'Ventas de mostrador y tickets',
+        trailing: FilledButton.tonalIcon(
+          onPressed: _newSale,
+          icon: const Icon(Icons.add_shopping_cart, size: 17),
+          label: const Text('Nueva venta'),
+        ),
+      ),
+      const SizedBox(height: 12),
+      GlassCard(child: Row(children: [
+        const Icon(Icons.receipt_long_outlined, color: eShokPurple, size: 25),
+        const SizedBox(width: 10),
+        const Expanded(child: Text(
+          'Arma ventas con varios productos y servicios, descuenta inventario y registra el cobro en caja en una sola operación.',
+          style: TextStyle(fontSize: 10, color: Color(0xFF786F83), height: 1.35),
+        )),
+      ])),
+      const SizedBox(height: 10),
+      Expanded(
+        child: FutureBuilder<List<Map<String, Object?>>>(
+          future: _future,
+          builder: (context, snap) {
+            if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            final rows = snap.data!;
+            if (rows.isEmpty) return const EmptyState(
+              title: 'Sin ventas',
+              message: 'Registra una venta para comenzar el historial.',
+            );
+            return ListView.builder(
+              itemCount: rows.length,
+              itemBuilder: (_, i) {
+                final sale = rows[i];
+                return Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: GlassCard(child: ListTile(
+                    onTap: () => _openSale(sale),
+                    leading: const Icon(Icons.receipt_outlined, color: eShokPurple),
+                    title: Text(_str(sale['folio']), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle: Text(
+                      '${_date(sale['created_at'])} · ${_str(sale['payment_method'])} · ${_str(sale['client_name'], 'Venta de mostrador')}',
+                      style: const TextStyle(fontSize: 9, color: Color(0xFF8A8095)),
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(_money(sale['total']), style: const TextStyle(fontWeight: FontWeight.w900)),
+                        const Text('VER TICKET', style: TextStyle(fontSize: 8, color: eShokPurple, fontWeight: FontWeight.w800)),
+                      ],
+                    ),
+                  )),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    ]),
+  );
 }
 
-class SaleDialog extends StatefulWidget { const SaleDialog({super.key, required this.store}); final LocalStore store; @override State<SaleDialog> createState() => _SaleDialogState(); }
+class _SaleLineDraft {
+  _SaleLineDraft({this.itemId})
+      : description = TextEditingController(),
+        quantity = TextEditingController(text: '1'),
+        unitPrice = TextEditingController(text: '0');
+
+  int? itemId;
+  final TextEditingController description;
+  final TextEditingController quantity;
+  final TextEditingController unitPrice;
+
+  void dispose() {
+    description.dispose();
+    quantity.dispose();
+    unitPrice.dispose();
+  }
+}
+
+class SaleDialog extends StatefulWidget {
+  const SaleDialog({super.key, required this.store});
+  final LocalStore store;
+  @override
+  State<SaleDialog> createState() => _SaleDialogState();
+}
+
 class _SaleDialogState extends State<SaleDialog> {
-  List<Map<String, Object?>> items = []; int? itemId; final description = TextEditingController(); final qty = TextEditingController(text: '1'); final price = TextEditingController(text: '0'); final discount = TextEditingController(text: '0'); final notes = TextEditingController(); String method = 'EFECTIVO';
-  @override void initState() { super.initState(); _load(); }
-  Future<void> _load() async { final rows = await widget.store.inventory(); if (mounted) setState(() { items = rows; }); }
-  @override void dispose() { for (final c in [description,qty,price,discount,notes]) { c.dispose(); } super.dispose(); }
-  @override Widget build(BuildContext context) => AlertDialog(scrollable: true, title: const Text('Registrar venta'), content: SizedBox(width: 440, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-    DropdownButtonFormField<int?>(isExpanded: true, value: itemId, decoration: const InputDecoration(labelText: 'Artículo de inventario (opcional)'), items: [const DropdownMenuItem<int?>(value: null, child: Text('Venta libre / servicio')), ...items.map((i) => DropdownMenuItem<int?>(value: i['id'] as int, child: Text('${_str(i['name'])} · ${_num(i['stock']).toStringAsFixed(0)} disp.', maxLines: 1, overflow: TextOverflow.ellipsis)))], onChanged: (v) { setState(() { itemId = v; if (v != null) { final found = items.firstWhere((e) => e['id'] == v); description.text = _str(found['name']); price.text = _str(found['price']); } }); }),
-    const SizedBox(height: 8), _field(description, 'Descripción', required: true), const SizedBox(height: 8), MediaQuery.sizeOf(context).width < 420
-       ? Column(children: [_field(qty, 'Cantidad', number: true), const SizedBox(height: 8), _field(price, 'Precio unitario', number: true)])
-       : Row(children: [Expanded(child: _field(qty, 'Cantidad', number: true)), const SizedBox(width: 8), Expanded(child: _field(price, 'Precio unitario', number: true))]), const SizedBox(height: 8), _field(discount, 'Descuento', number: true), const SizedBox(height: 8), DropdownButtonFormField<String>(value: method, decoration: const InputDecoration(labelText: 'Método de pago'), items: const ['EFECTIVO','TRANSFERENCIA','TARJETA','OTRO'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => method = v ?? method)), const SizedBox(height: 8), _field(notes, 'Notas'),
-  ]))), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')), FilledButton(onPressed: () async { try { await widget.store.createSale(itemId: itemId, description: description.text, quantity: double.parse(qty.text), unitPrice: double.parse(price.text), paymentMethod: method, discount: double.tryParse(discount.text) ?? 0, notes: notes.text); if (context.mounted) Navigator.pop(context, true); } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } }, child: const Text('Cobrar venta'))]);
+  List<Map<String, Object?>> _items = [];
+  List<Map<String, Object?>> _clients = [];
+  final List<_SaleLineDraft> _lines = [];
+  final discount = TextEditingController(text: '0');
+  final notes = TextEditingController();
+  int? clientId;
+  String method = 'EFECTIVO';
+  bool loading = true;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final results = await Future.wait([
+      widget.store.inventory(),
+      widget.store.clients(),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _items = results[0];
+      _clients = results[1];
+      _lines.add(_SaleLineDraft());
+      loading = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final line in _lines) {
+      line.dispose();
+    }
+    discount.dispose();
+    notes.dispose();
+    super.dispose();
+  }
+
+  double _value(TextEditingController controller) =>
+      double.tryParse(controller.text.trim().replaceAll(',', '.')) ?? -1;
+
+  double get _subtotal => _lines.fold<double>(0, (sum, line) {
+    final qty = double.tryParse(line.quantity.text.trim().replaceAll(',', '.')) ?? 0;
+    final price = double.tryParse(line.unitPrice.text.trim().replaceAll(',', '.')) ?? 0;
+    return sum + (qty * price);
+  });
+
+  void _addLine() => setState(() => _lines.add(_SaleLineDraft()));
+
+  void _removeLine(int index) {
+    if (_lines.length <= 1) return;
+    setState(() => _lines.removeAt(index).dispose());
+  }
+
+  void _selectItem(_SaleLineDraft line, int? selectedId) {
+    Map<String, Object?>? selected;
+    for (final item in _items) {
+      if (item['id'] == selectedId) {
+        selected = item;
+        break;
+      }
+    }
+    setState(() {
+      line.itemId = selectedId;
+      if (selected != null) {
+        line.description.text = _str(selected['name']);
+        line.unitPrice.text = _num(selected['price']).toStringAsFixed(2);
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    if (_lines.any((line) =>
+        line.description.text.trim().isEmpty ||
+        _value(line.quantity) <= 0 ||
+        _value(line.unitPrice) < 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Completa la descripción, cantidad y precio de cada partida.'),
+      ));
+      return;
+    }
+    setState(() => saving = true);
+    try {
+      await widget.store.createSaleCart(
+        clientId: clientId,
+        items: _lines.map((line) => <String, Object?>{
+          'item_id': line.itemId,
+          'description': line.description.text.trim(),
+          'quantity': _value(line.quantity),
+          'unit_price': _value(line.unitPrice),
+        }).toList(),
+        paymentMethod: method,
+        discount: _value(discount),
+        notes: notes.text,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const AlertDialog(
+      content: SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
+    );
+
+    final total = PurchaseAccounting.total(_subtotal, double.tryParse(discount.text) ?? 0);
+    return AlertDialog(
+      scrollable: true,
+      title: const Text('Nueva venta'),
+      content: SizedBox(width: 470, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        DropdownButtonFormField<int?>(
+          initialValue: clientId,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Cliente (opcional)'),
+          items: [
+            const DropdownMenuItem<int?>(value: null, child: Text('Venta de mostrador')),
+            ..._clients.map((client) => DropdownMenuItem<int?>(
+              value: client['id'] as int,
+              child: Text(_str(client['name']), overflow: TextOverflow.ellipsis),
+            )),
+          ],
+          onChanged: (value) => setState(() => clientId = value),
+        ),
+        const SizedBox(height: 12),
+        Row(children: [
+          const Expanded(child: Text('Productos y servicios', style: TextStyle(fontWeight: FontWeight.w800))),
+          TextButton.icon(
+            onPressed: _addLine,
+            icon: const Icon(Icons.add, size: 17),
+            label: const Text('Agregar'),
+          ),
+        ]),
+        ..._lines.asMap().entries.map((entry) {
+          final index = entry.key;
+          final line = entry.value;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Expanded(child: DropdownButtonFormField<int?>(
+                  initialValue: line.itemId,
+                  isExpanded: true,
+                  decoration: InputDecoration(labelText: 'Artículo ${index + 1}'),
+                  items: [
+                    const DropdownMenuItem<int?>(value: null, child: Text('Servicio / venta libre')),
+                    ..._items.map((item) => DropdownMenuItem<int?>(
+                      value: item['id'] as int,
+                      child: Text('${_str(item['name'])} · ${_num(item['stock']).toStringAsFixed(0)} disp.',
+                        overflow: TextOverflow.ellipsis),
+                    )),
+                  ],
+                  onChanged: (value) => _selectItem(line, value),
+                )),
+                IconButton(
+                  onPressed: _lines.length <= 1 ? null : () => _removeLine(index),
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'Quitar partida',
+                ),
+              ]),
+              const SizedBox(height: 6),
+              _field(line.description, 'Descripción', required: true),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(child: _field(line.quantity, 'Cantidad', required: true, number: true, onChanged: (_) => setState(() {}))),
+                const SizedBox(width: 8),
+                Expanded(child: _field(line.unitPrice, 'Precio unitario', required: true, number: true, onChanged: (_) => setState(() {}))),
+              ]),
+            ]),
+          );
+        }),
+        const Divider(),
+        _field(discount, 'Descuento global', number: true, onChanged: (_) => setState(() {})),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: method,
+          decoration: const InputDecoration(labelText: 'Método de pago'),
+          items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+            .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+          onChanged: (value) => setState(() => method = value ?? method),
+        ),
+        const SizedBox(height: 8),
+        _field(notes, 'Notas / referencia'),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('Subtotal: ${_money(_subtotal)}', style: const TextStyle(fontSize: 11)),
+            Text('Total: ${_money(total)}',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: eShokPurple)),
+          ]),
+        ),
+      ])),
+      actions: [
+        TextButton(onPressed: saving ? null : () => Navigator.pop(context, false), child: const Text('Cancelar')),
+        FilledButton(onPressed: saving ? null : _save,
+          child: Text(saving ? 'Procesando…' : 'Cobrar venta')),
+      ],
+    );
+  }
+}
+
+class SaleDetailDialog extends StatefulWidget {
+  const SaleDetailDialog({super.key, required this.store, required this.sale});
+  final LocalStore store;
+  final Map<String, Object?> sale;
+  @override
+  State<SaleDetailDialog> createState() => _SaleDetailDialogState();
+}
+
+class _SaleDetailDialogState extends State<SaleDetailDialog> {
+  late Future<List<Map<String, Object?>>> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = widget.store.saleItems(widget.sale['id'] as int);
+  }
+
+  Future<void> _printTicket(List<Map<String, Object?>> items) async {
+    final sale = widget.sale;
+    final doc = pw.Document();
+    doc.addPage(pw.Page(
+      pageFormat: PdfPageFormat.roll80,
+      margin: const pw.EdgeInsets.all(12),
+      build: (_) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Center(child: pw.Text('eShokFix', style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))),
+          pw.Center(child: pw.Text('Ticket de venta', style: const pw.TextStyle(fontSize: 9))),
+          pw.SizedBox(height: 8),
+          pw.Divider(),
+          pw.Text('Folio: ${sale['folio']}'),
+          pw.Text('Fecha: ${_date(sale['created_at'])}'),
+          pw.Text('Cliente: ${_str(sale['client_name'], 'Venta de mostrador')}'),
+          pw.Divider(),
+          ...items.map((item) => pw.Padding(
+            padding: const pw.EdgeInsets.only(bottom: 5),
+            child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+              pw.Text('${item['description']}'),
+              pw.Text('${_num(item['quantity'])} × ${_money(item['unit_price'])} = ${_money(item['line_total'])}',
+                style: const pw.TextStyle(fontSize: 9)),
+            ]),
+          )),
+          pw.Divider(),
+          pw.Text('Subtotal: ${_money(sale['subtotal'])}'),
+          pw.Text('Descuento: ${_money(sale['discount'])}'),
+          pw.Text('TOTAL: ${_money(sale['total'])}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
+          pw.Text('Pago: ${_str(sale['payment_method'])}'),
+          pw.SizedBox(height: 10),
+          pw.Center(child: pw.Text('Gracias por tu compra', style: const pw.TextStyle(fontSize: 8))),
+        ],
+      ),
+    ));
+    await Printing.layoutPdf(
+      onLayout: (_) async => doc.save(),
+      name: 'eShokFix-${sale['folio']}.pdf',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: Text('Ticket ${_str(widget.sale['folio'])}'),
+    content: SizedBox(width: 440, child: FutureBuilder<List<Map<String, Object?>>>(
+      future: _items,
+      builder: (context, snap) {
+        if (snap.hasError) return Text('No se pudieron cargar las partidas: ${snap.error}');
+        if (!snap.hasData) return const LinearProgressIndicator();
+        final rows = snap.data!;
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('${_str(widget.sale['client_name'], 'Venta de mostrador')} · ${_date(widget.sale['created_at'])}',
+            style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+          const SizedBox(height: 8),
+          ...rows.map((item) => ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(_str(item['description'])),
+            subtitle: Text('${_num(item['quantity'])} × ${_money(item['unit_price'])}'),
+            trailing: Text(_money(item['line_total']), style: const TextStyle(fontWeight: FontWeight.w800)),
+          )),
+          const Divider(),
+          _reportLine('Subtotal', _money(widget.sale['subtotal'])),
+          _reportLine('Descuento', _money(widget.sale['discount'])),
+          _reportLine('Total', _money(widget.sale['total'])),
+          _reportLine('Método de pago', _str(widget.sale['payment_method'])),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: () => _printTicket(rows),
+              icon: const Icon(Icons.print_outlined),
+              label: const Text('Imprimir / PDF'),
+            ),
+          ),
+        ]);
+      },
+    )),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+    ],
+  );
 }
 
 class CashPage extends StatefulWidget { const CashPage({super.key, required this.store}); final LocalStore store; @override State<CashPage> createState() => _CashPageState(); }
