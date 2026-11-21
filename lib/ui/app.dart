@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import '../domain/workflow.dart';
 import '../domain/financial_rules.dart';
 import 'theme.dart';
+import 'brand_logo.dart';
 
 part 'modules/orders_ui.dart';
 part 'modules/clients_inventory_ui.dart';
@@ -244,7 +245,7 @@ class _DashboardPageState extends State<DashboardPage> {
               FilledButton.icon(onPressed: () => widget.open('ordenes'), icon: const Icon(Icons.add, size: 18), label: const Text('Nueva orden')),
             ])),
             const SizedBox(width: 10),
-            Container(width: 76, height: 76, decoration: BoxDecoration(color: eShokPurple.withValues(alpha: .10), shape: BoxShape.circle), child: const Icon(Icons.handyman_outlined, size: 38, color: eShokPurple)),
+            const SizedBox(width: 112, height: 82, child: BrandLogo(fit: BoxFit.contain)),
           ])),
           const SizedBox(height: 16),
           const SectionHeading('Resumen operativo', subtitle: 'Indicadores de la base local'),
