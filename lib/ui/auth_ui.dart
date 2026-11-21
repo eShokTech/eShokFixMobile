@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../data/auth_service.dart';
 import 'theme.dart';
+import 'brand_logo.dart';
 
 class InitialAdminPage extends StatefulWidget {
   const InitialAdminPage({super.key, required this.auth, required this.onAuthenticated});
@@ -142,7 +143,7 @@ class _AuthScaffold extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Container(width: 72, height: 72, decoration: BoxDecoration(color: eShokPurple.withValues(alpha: .10), borderRadius: BorderRadius.circular(22)), child: const Icon(Icons.handyman_outlined, color: eShokPurple, size: 38)),
+              const SizedBox(width: 220, height: 114, child: BrandLogo(fit: BoxFit.contain)),
               const SizedBox(height: 22),
               Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: eShokInk)),
               const SizedBox(height: 8),
