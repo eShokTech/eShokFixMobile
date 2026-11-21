@@ -271,13 +271,6 @@ class _EShokFixShellState extends State<EShokFixShell> {
   }
 }
 
-void _showInfo(BuildContext context, String title, String message) {
-  showDialog<void>(context: context, builder: (ctx) => AlertDialog(
-    title: Text(title), content: Text(message),
-    actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendido'))],
-  ));
-}
-
 class PageFrame extends StatelessWidget {
   const PageFrame({super.key, required this.child, this.padding = const EdgeInsets.fromLTRB(16, 14, 16, 24)});
   final Widget child;
