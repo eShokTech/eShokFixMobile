@@ -199,7 +199,7 @@ void main() {
       store.addOrderPart(orderId, itemId, 1),
       throwsA(isA<StateError>()),
     );
-    var inventory = await store.inventory(query: 'Centro de carga');
+    var inventory = await store.inventory(query: 'TEST-CHARGE');
     expect(inventory.single['stock'], 2);
 
     await store.setOrderStatus(orderId, 'DIAGNOSTICO');
@@ -212,7 +212,7 @@ void main() {
     );
     await store.addOrderPart(orderId, itemId, 1);
 
-    inventory = await store.inventory(query: 'Centro de carga');
+    inventory = await store.inventory(query: 'TEST-CHARGE');
     expect(inventory.single['stock'], 1);
     var order = await store.order(orderId);
     expect((order!['parts_total'] as num).toDouble(), 90);
@@ -222,7 +222,7 @@ void main() {
       store.addOrderPart(orderId, itemId, 2),
       throwsA(isA<StateError>()),
     );
-    inventory = await store.inventory(query: 'Centro de carga');
+    inventory = await store.inventory(query: 'TEST-CHARGE');
     expect(inventory.single['stock'], 1);
 
     await store.addOrderPayment(orderId, 100, 'EFECTIVO');
@@ -231,7 +231,7 @@ void main() {
       refundMethod: 'EFECTIVO',
       reason: 'El cliente decidió no continuar',
     );
-    inventory = await store.inventory(query: 'Centro de carga');
+    inventory = await store.inventory(query: 'TEST-CHARGE');
     expect(inventory.single['stock'], 1);
     order = await store.order(orderId);
     expect(order!['status'], 'CANCELADO');
