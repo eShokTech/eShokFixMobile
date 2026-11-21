@@ -6,6 +6,19 @@ import 'package:sqflite/sqflite.dart';
 import '../domain/workflow.dart';
 import '../domain/financial_rules.dart';
 
+Future<void> _createOrderRefundTable(DatabaseExecutor db) async {
+  await db.execute('''CREATE TABLE IF NOT EXISTS order_refunds(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    method TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(order_id) REFERENCES service_orders(id) ON DELETE CASCADE
+  )''');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_order_refunds_order ON order_refunds(order_id)');
+}
+
 Future<void> _createFinancialTables(DatabaseExecutor db) async {
   await db.execute('''CREATE TABLE IF NOT EXISTS sale_payments(
     id INTEGER PRIMARY KEY AUTOINCREMENT, sale_id INTEGER NOT NULL,
@@ -125,7 +138,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 6,
+      version: 7,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -146,6 +159,7 @@ class LocalStore {
           labor REAL NOT NULL DEFAULT 0, parts_total REAL NOT NULL DEFAULT 0,
           discount REAL NOT NULL DEFAULT 0, total REAL NOT NULL DEFAULT 0,
           paid REAL NOT NULL DEFAULT 0, deposit REAL NOT NULL DEFAULT 0,
+          refunded_total REAL NOT NULL DEFAULT 0,
           warranty_days INTEGER NOT NULL DEFAULT 30, notes TEXT DEFAULT '', is_demo INTEGER NOT NULL DEFAULT 0,
           authorization_status TEXT NOT NULL DEFAULT 'PENDING', authorized_at TEXT,
           authorized_by TEXT DEFAULT '', authorization_method TEXT DEFAULT '', authorization_note TEXT DEFAULT '',
@@ -226,6 +240,7 @@ class LocalStore {
         await _createPurchaseTables(db);
         await _createOrderPartsTable(db);
         await _createFinancialTables(db);
+        await _createOrderRefundTable(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -259,6 +274,10 @@ class LocalStore {
           await db.execute("""INSERT INTO purchase_payments(purchase_id, method, amount, reference, created_at)
             SELECT id, payment_method, paid, 'Registro histórico migrado', created_at
             FROM purchases WHERE paid > 0""");
+        }
+        if (oldVersion < 7) {
+          await db.execute("ALTER TABLE service_orders ADD COLUMN refunded_total REAL NOT NULL DEFAULT 0");
+          await _createOrderRefundTable(db);
         }
       },
     );
@@ -450,6 +469,9 @@ class LocalStore {
     if (labor < 0 || parts < 0 || discount < 0 || deposit < 0 || warrantyDays < 0) {
       throw ArgumentError('Los importes y días de garantía no pueden ser negativos.');
     }
+    if (![labor, parts, discount, deposit].every((value) => value.isFinite)) {
+      throw ArgumentError('Los importes deben ser números válidos.');
+    }
     final computedTotal = (labor + parts - discount).clamp(0, double.infinity).toDouble();
     if (deposit > computedTotal) throw ArgumentError('El anticipo no puede superar el total del servicio.');
     final clientExists = await db.query('clients', columns: ['id'], where: 'id=?', whereArgs: [clientId], limit: 1);
@@ -640,6 +662,9 @@ class LocalStore {
   }
 
   Future<void> setOrderStatus(int id, String next, {String note = ''}) async {
+    if (next == 'CANCELADO') {
+      throw StateError('Usa la acción Cancelar orden para registrar motivo y reembolso.');
+    }
     final current = await order(id);
     if (current == null) throw StateError('No se encontró el expediente.');
     final old = current['status'] as String;
@@ -678,6 +703,76 @@ class LocalStore {
   Future<List<Map<String, Object?>>> orderPayments(int orderId) =>
       db.query('payments', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC');
 
+  Future<List<Map<String, Object?>>> orderRefunds(int orderId) =>
+      db.query('order_refunds', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC');
+
+  Future<void> cancelOrder(
+    int orderId, {
+    required String refundMethod,
+    required String reason,
+  }) async {
+    if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de cancelación.');
+    final method = refundMethod.trim().toUpperCase();
+    if (!FinancialRules.paymentMethods.contains(method)) {
+      throw ArgumentError('Selecciona un medio de reembolso válido.');
+    }
+    final now = _now();
+    await db.transaction((tx) async {
+      final rows = await tx.query('service_orders',
+        columns: ['folio', 'status', 'paid', 'refunded_total'],
+        where: 'id=?', whereArgs: [orderId], limit: 1);
+      if (rows.isEmpty) throw StateError('Orden no encontrada.');
+      final row = rows.first;
+      final status = row['status'] as String;
+      if (status == 'CANCELADO') throw StateError('La orden ya está cancelada.');
+      if (status == 'ENTREGADO') {
+        throw StateError('Una orden entregada no se cancela desde este flujo. Atiéndela mediante garantía o devolución.');
+      }
+      final paid = (row['paid'] as num).toDouble();
+      final previousRefunds = (row['refunded_total'] as num).toDouble();
+      final refund = FinancialRules.money(
+        (paid - previousRefunds).clamp(0.0, double.infinity).toDouble(),
+      );
+      if (refund > 0) {
+        await tx.insert('order_refunds', {
+          'order_id': orderId, 'amount': refund, 'method': method,
+          'reason': reason.trim(), 'created_at': now,
+        });
+        await tx.insert('cash_movements', {
+          'movement_type': 'OUT', 'amount': refund,
+          'concept': 'Reembolso de orden ${row['folio']}',
+          'reference': method, 'payment_method': method,
+          'related_order_id': orderId, 'created_at': now,
+        });
+      }
+      await tx.update('service_orders', {
+        'status': 'CANCELADO',
+        'paid': FinancialRules.money((paid - refund).clamp(0.0, double.infinity).toDouble()),
+        'refunded_total': previousRefunds + refund,
+      }, where: 'id=?', whereArgs: [orderId]);
+      await tx.insert('order_events', {
+        'order_id': orderId, 'from_status': status, 'to_status': 'CANCELADO',
+        'description': 'Orden cancelada · ${reason.trim()} · Reembolso ${refund.toStringAsFixed(2)}',
+        'created_at': now,
+      });
+      await tx.insert('audit_log', {
+        'entity': 'service_order', 'entity_id': orderId,
+        'action': 'CANCEL_WITH_REFUND',
+        'detail': '${row['folio']} · reembolso $refund · $method · ${reason.trim()}',
+        'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'service_order', 'entity_id': orderId,
+        'operation': 'CANCEL_WITH_REFUND',
+        'payload': jsonEncode({
+          'folio': row['folio'], 'refund': refund,
+          'method': method, 'reason': reason.trim(),
+        }),
+        'created_at': now,
+      });
+    });
+  }
+
   Future<List<Map<String, Object?>>> orderEvents(int id) => db.query('order_events', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC');
   Future<List<Map<String, Object?>>> orderEvidence(int id) => db.query('evidences', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC');
   Future<void> addEvidence(int orderId, String path, String caption) async {
@@ -695,7 +790,7 @@ class LocalStore {
       final row = await tx.query('service_orders', columns: ['paid', 'total', 'folio'], where: 'id=?', whereArgs: [orderId], limit: 1);
       if (row.isEmpty) throw StateError('Orden no encontrada.');
       final orderState = await tx.query('service_orders', columns: ['status'], where: 'id=?', whereArgs: [orderId], limit: 1);
-      if (orderState.isEmpty || orderState.first['status'] == 'CANCELADO') throw StateError('No se pueden registrar pagos en una orden cancelada.');
+      if (orderState.isEmpty || const {'CANCELADO', 'ENTREGADO'}.contains(orderState.first['status'])) throw StateError('No se pueden registrar pagos en una orden cerrada.');
       final paid = (row.first['paid'] as num).toDouble();
       final total = (row.first['total'] as num).toDouble();
       if (amount > total - paid + 0.01) throw StateError('El pago supera el saldo pendiente.');

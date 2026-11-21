@@ -495,6 +495,50 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   @override
   void initState() { super.initState(); _refresh(); }
   void _refresh() => _data = widget.store.order(widget.orderId);
+  Future<void> _cancelOrder() async {
+    final reason = TextEditingController();
+    String method = 'EFECTIVO';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialog) => AlertDialog(
+        title: const Text('Cancelar orden'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Se reembolsará el importe neto cobrado y se registrará la salida en caja. Las refacciones ya consumidas no regresan al inventario. La acción no se puede deshacer.'),
+          const SizedBox(height: 9),
+          DropdownButtonFormField<String>(
+            initialValue: method,
+            decoration: const InputDecoration(labelText: 'Medio del reembolso'),
+            items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+              .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+            onChanged: (v) => setDialog(() => method = v ?? method),
+          ),
+          const SizedBox(height: 8),
+          TextField(controller: reason, maxLines: 2,
+            decoration: const InputDecoration(labelText: 'Motivo obligatorio')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Conservar orden')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB65E69)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancelar y reembolsar'),
+          ),
+        ],
+      )),
+    );
+    if (confirmed != true) { reason.dispose(); return; }
+    try {
+      await widget.store.cancelOrder(
+        widget.orderId, refundMethod: method, reason: reason.text,
+      );
+      if (mounted) setState(_refresh);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+    } finally {
+      reason.dispose();
+    }
+  }
+
   Future<void> _status(String status) async {
     final note = TextEditingController();
     final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: Text('Cambiar a ${OrderWorkflow.label(status)}'), content: TextField(controller: note, maxLines: 2, decoration: const InputDecoration(labelText: 'Nota del movimiento (opcional)')), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirmar'))]));
@@ -593,7 +637,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         SectionHeading('Flujo de trabajo', subtitle: 'Las transiciones no válidas se bloquean'),
         const SizedBox(height: 8),
         GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Wrap(spacing: 7, runSpacing: 7, children: OrderWorkflow.transitions[status]!.map((next) {
+          Wrap(spacing: 7, runSpacing: 7, children: OrderWorkflow.transitions[status]!.where((next) => next != 'CANCELADO').map((next) {
             final authorizationPending = _str(o['authorization_status'], 'PENDING') != 'APPROVED';
             final needsAuthorization = next == 'ESPERA_REFACCION' || next == 'REPARACION';
             return ActionChip(
@@ -631,6 +675,15 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
                 ),
               ),
           ],
+          if (status != 'ENTREGADO' && status != 'CANCELADO')
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _cancelOrder,
+                icon: const Icon(Icons.cancel_outlined, color: Color(0xFFB65E69)),
+                label: const Text('Cancelar orden y registrar reembolso'),
+              ),
+            ),
           const SizedBox(height: 8),
           OutlinedButton.icon(onPressed: () => _diagnosis(_str(o['diagnosis']), _str(o['notes'])), icon: const Icon(Icons.edit_note), label: const Text('Editar diagnóstico y notas')),
         ])),
@@ -679,7 +732,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           Align(alignment: Alignment.centerLeft, child: Text('Garantía al entregar: ${o['warranty_days']} días', style: const TextStyle(fontSize: 10, color: Color(0xFF867C91)))),
         ])),
         const SizedBox(height: 12),
-        const SectionHeading('Historial de pagos'),
+        const SectionHeading('Historial de pagos y reembolsos'),
         const SizedBox(height: 6),
         FutureBuilder<List<Map<String, Object?>>>(
           future: widget.store.orderPayments(widget.orderId),
@@ -697,6 +750,20 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
               title: Text(_money(payment['amount']), style: const TextStyle(fontWeight: FontWeight.w800)),
               subtitle: Text('${_str(payment['method'])} · ${_date(payment['created_at'])}'),
               trailing: Text(_str(payment['reference']), style: const TextStyle(fontSize: 9)),
+            )).toList()));
+          },
+        ),
+        const SizedBox(height: 7),
+        FutureBuilder<List<Map<String, Object?>>>(
+          future: widget.store.orderRefunds(widget.orderId),
+          builder: (context, refundSnap) {
+            if (!refundSnap.hasData || refundSnap.data!.isEmpty) return const SizedBox.shrink();
+            return GlassCard(child: Column(children: refundSnap.data!.map((refund) => ListTile(
+              dense: true,
+              leading: const Icon(Icons.assignment_return_outlined, color: Color(0xFFB65E69)),
+              title: Text('Reembolso ${_money(refund['amount'])}', style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text('${_str(refund['method'])} · ${_date(refund['created_at'])}\n${_str(refund['reason'])}'),
+              isThreeLine: true,
             )).toList()));
           },
         ),
