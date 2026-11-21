@@ -293,13 +293,13 @@ void main() {
   });
 
 
-  test('first-run setup creates a salted password hash, never a plaintext password', () async {
+  test('first-run setup stores a salted hash for the six-digit PIN', () async {
     final auth = AuthService(store.db);
     expect(await auth.needsInitialSetup(), isTrue);
     await auth.createInitialAdmin(
       username: 'admin',
       displayName: 'Administrador principal',
-      password: 'TallerSeguro2026',
+      password: '123456',
     );
     expect(await auth.needsInitialSetup(), isFalse);
     final rows = await store.db.query(
@@ -311,13 +311,13 @@ void main() {
     );
     expect(rows, hasLength(1));
     expect(rows.single['password_salt'], isNotEmpty);
-    expect(rows.single['password_hash'], isNot('TallerSeguro2026'));
+    expect(rows.single['password_hash'], isNot('123456'));
     expect((rows.single['password_hash'] as String).length, greaterThan(40));
     await expectLater(
       auth.createInitialAdmin(
         username: 'admin',
         displayName: 'Segundo intento',
-        password: 'OtroPassword2026',
+        password: '654321',
       ),
       throwsA(isA<StateError>()),
     );
