@@ -1083,6 +1083,7 @@ class _SaleDialogState extends State<SaleDialog> {
   bool loading = true;
   bool saving = false;
   bool splitPayment = false;
+  bool receiveImmediately = true;
   final splitAmount = TextEditingController(text: '0');
   String secondPaymentMethod = 'TARJETA';
 
@@ -2275,6 +2276,7 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
         paid: paidValue,
         paymentMethod: paymentMethod,
         paymentBreakdown: breakdown,
+        receiveImmediately: receiveImmediately,
         notes: notes.text,
       );
       if (mounted) Navigator.pop(context, true);
@@ -2305,8 +2307,15 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
           onChanged: (v) => setState(() => _supplierId = v),
         ),
         const SizedBox(height: 12),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Recibir mercancía ahora', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          subtitle: const Text('Desactivado: se registra como pedido y no aumenta inventario todavía.', style: TextStyle(fontSize: 10)),
+          value: receiveImmediately,
+          onChanged: (value) => setState(() => receiveImmediately = value),
+        ),
         Row(children: [
-          const Expanded(child: Text('Artículos recibidos', style: TextStyle(fontWeight: FontWeight.w800))),
+          const Expanded(child: Text('Artículos del pedido', style: TextStyle(fontWeight: FontWeight.w800))),
           TextButton.icon(onPressed: _items.isEmpty ? null : _addLine,
             icon: const Icon(Icons.add, size: 17), label: const Text('Agregar artículo')),
         ]),
@@ -2416,6 +2425,44 @@ class PurchaseDetailDialog extends StatefulWidget {
 
 class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
   final amount = TextEditingController();
+  Future<void> _receiveLine(Map<String, Object?> line) async {
+    final pending = FinancialRules.remainingQuantity(
+      _num(line['quantity']), _num(line['received_quantity']),
+    );
+    if (pending <= 0) return;
+    final quantity = TextEditingController(text: pending.toStringAsFixed(2));
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Registrar recepción'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_str(line['description'])),
+          const SizedBox(height: 8),
+          Text('Pendiente: ${pending.toStringAsFixed(2)}'),
+          TextField(controller: quantity,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Cantidad recibida')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Registrar')),
+        ],
+      ),
+    );
+    if (confirmed != true) { quantity.dispose(); return; }
+    try {
+      await widget.store.receivePurchaseItem(
+        widget.purchase['id'] as int,
+        line['id'] as int,
+        double.parse(quantity.text.trim().replaceAll(',', '.')),
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+    } finally {
+      quantity.dispose();
+    }
+  }
   String method = 'EFECTIVO';
   bool saving = false;
   late Future<List<Map<String, Object?>>> _items;
@@ -2505,9 +2552,16 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
               dense: true,
               contentPadding: EdgeInsets.zero,
               title: Text(_str(line['description'])),
-              subtitle: Text('${_num(line['quantity'])} × ${_money(line['unit_cost'])}'),
+              subtitle: Text('Pedido ${_num(line['quantity'])} · Recibido ${_num(line['received_quantity'])} · Devuelto ${_num(line['returned_quantity'])}'),
               trailing: Column(mainAxisSize: MainAxisSize.min, children: [
                 Text(_money(line['line_total']), style: const TextStyle(fontWeight: FontWeight.w800)),
+                if (_num(line['received_quantity']) < _num(line['quantity']))
+                  IconButton(
+                    tooltip: 'Registrar recepción',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _receiveLine(line),
+                    icon: const Icon(Icons.move_to_inbox_outlined, color: eShokPurple),
+                  ),
                 IconButton(
                   tooltip: 'Devolver al proveedor',
                   visualDensity: VisualDensity.compact,

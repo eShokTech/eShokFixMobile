@@ -117,6 +117,7 @@ Future<void> _createPurchaseTables(DatabaseExecutor db) async {
     item_id INTEGER NOT NULL,
     description TEXT NOT NULL,
     quantity REAL NOT NULL,
+    received_quantity REAL NOT NULL DEFAULT 0,
     unit_cost REAL NOT NULL,
     line_total REAL NOT NULL,
     returned_quantity REAL NOT NULL DEFAULT 0,
@@ -138,7 +139,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 7,
+      version: 8,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -278,6 +279,10 @@ class LocalStore {
         if (oldVersion < 7) {
           await db.execute("ALTER TABLE service_orders ADD COLUMN refunded_total REAL NOT NULL DEFAULT 0");
           await _createOrderRefundTable(db);
+        }
+        if (oldVersion < 8 && oldVersion >= 2) {
+          await db.execute("ALTER TABLE purchase_items ADD COLUMN received_quantity REAL NOT NULL DEFAULT 0");
+          await db.execute("UPDATE purchase_items SET received_quantity=quantity");
         }
       },
     );
@@ -915,6 +920,7 @@ class LocalStore {
     double paid = 0,
     String paymentMethod = 'EFECTIVO',
     List<Map<String, Object?>>? paymentBreakdown,
+    bool receiveImmediately = true,
     String notes = '',
   }) async {
     if (items.isEmpty) throw ArgumentError('Agrega al menos un artículo a la compra.');
@@ -971,6 +977,7 @@ class LocalStore {
         'paid': paid,
         'payment_status': PurchaseAccounting.paymentStatus(total, paid),
         'payment_method': storedMethod,
+        'status': receiveImmediately ? 'RECEIVED' : 'ORDERED',
         'notes': notes.trim(),
         'received_at': now,
         'created_at': now,
@@ -988,20 +995,26 @@ class LocalStore {
         final quantity = line['quantity'] as double;
         final unitCost = line['unit_cost'] as double;
         final newStock = oldStock + quantity;
-        await tx.update('inventory_items', {
-          'stock': newStock, 'cost': unitCost, 'updated_at': now,
-        }, where: 'id=?', whereArgs: [itemId]);
+        if (receiveImmediately) {
+          await tx.update('inventory_items', {
+            'stock': newStock, 'cost': unitCost, 'updated_at': now,
+          }, where: 'id=?', whereArgs: [itemId]);
+        }
         await tx.insert('purchase_items', {
           'purchase_id': purchaseId, 'item_id': itemId,
           'description': current.first['name'],
-          'quantity': quantity, 'unit_cost': unitCost,
+          'quantity': quantity,
+          'received_quantity': receiveImmediately ? quantity : 0,
+          'unit_cost': unitCost,
           'line_total': line['line_total'],
         });
-        await tx.insert('inventory_movements', {
-          'item_id': itemId, 'movement_type': 'IN',
-          'quantity': quantity, 'reason': 'Compra $folio',
-          'created_at': now,
-        });
+        if (receiveImmediately) {
+          await tx.insert('inventory_movements', {
+            'item_id': itemId, 'movement_type': 'IN',
+            'quantity': quantity, 'reason': 'Compra $folio',
+            'created_at': now,
+          });
+        }
       }
       for (final part in tender) {
         final method = part['method'] as String;
@@ -1027,7 +1040,8 @@ class LocalStore {
         'payload': jsonEncode({
           'folio': folio, 'supplier_id': supplierId,
           'subtotal': subtotal, 'discount': discount,
-          'total': total, 'paid': paid, 'payment_breakdown': tender, 'items': prepared,
+          'total': total, 'paid': paid, 'status': receiveImmediately ? 'RECEIVED' : 'ORDERED',
+          'payment_breakdown': tender, 'items': prepared,
         }),
         'created_at': now,
       });
@@ -1414,6 +1428,67 @@ class LocalStore {
     });
   }
 
+  Future<void> receivePurchaseItem(
+    int purchaseId,
+    int purchaseItemId,
+    double quantity,
+  ) async {
+    if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad recibida debe ser mayor a cero.');
+    final now = _now();
+    await db.transaction((tx) async {
+      final rows = await tx.rawQuery('''SELECT pi.*, p.folio, p.status purchase_status,
+          i.name item_name, i.stock
+        FROM purchase_items pi
+        JOIN purchases p ON p.id=pi.purchase_id
+        JOIN inventory_items i ON i.id=pi.item_id
+        WHERE pi.id=? AND pi.purchase_id=?''', [purchaseItemId, purchaseId]);
+      if (rows.isEmpty) throw StateError('No se encontró la partida de compra.');
+      final row = rows.first;
+      if (row['purchase_status'] == 'CANCELLED') throw StateError('La compra está cancelada.');
+      final ordered = (row['quantity'] as num).toDouble();
+      final received = (row['received_quantity'] as num).toDouble();
+      final pending = FinancialRules.remainingQuantity(ordered, received);
+      if (quantity > pending + 0.000001) {
+        throw StateError('La cantidad supera lo pendiente por recibir.');
+      }
+      final stock = (row['stock'] as num).toDouble();
+      final itemId = row['item_id'] as int;
+      await tx.update('inventory_items', {
+        'stock': stock + quantity, 'cost': row['unit_cost'], 'updated_at': now,
+      }, where: 'id=?', whereArgs: [itemId]);
+      await tx.update('purchase_items', {
+        'received_quantity': received + quantity,
+      }, where: 'id=?', whereArgs: [purchaseItemId]);
+      await tx.insert('inventory_movements', {
+        'item_id': itemId, 'movement_type': 'IN', 'quantity': quantity,
+        'reason': 'Recepción de compra ${row['folio']}', 'created_at': now,
+      });
+      final remainingRows = await tx.rawQuery('''SELECT COUNT(*) pending
+        FROM purchase_items WHERE purchase_id=?
+        AND received_quantity < quantity - 0.000001''', [purchaseId]);
+      final allReceived = (remainingRows.first['pending'] as num).toInt() == 0;
+      await tx.update('purchases', {
+        'status': allReceived ? 'RECEIVED' : 'PARTIAL_RECEIVED',
+        'received_at': now,
+      }, where: 'id=?', whereArgs: [purchaseId]);
+      await tx.insert('audit_log', {
+        'entity': 'purchase', 'entity_id': purchaseId,
+        'action': 'RECEIVE_ITEMS',
+        'detail': '${row['item_name']} · $quantity · ${row['folio']}',
+        'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'purchase', 'entity_id': purchaseId,
+        'operation': 'RECEIVE_ITEMS',
+        'payload': jsonEncode({
+          'purchase_id': purchaseId, 'purchase_item_id': purchaseItemId,
+          'item_id': itemId, 'quantity': quantity,
+        }),
+        'created_at': now,
+      });
+    });
+  }
+
   Future<void> returnPurchaseItem({
     required int purchaseId,
     required int purchaseItemId,
@@ -1434,7 +1509,7 @@ class LocalStore {
         WHERE pi.id=? AND pi.purchase_id=?''', [purchaseItemId, purchaseId]);
       if (rows.isEmpty) throw StateError('No se encontró la partida de compra.');
       final row = rows.first;
-      final received = (row['quantity'] as num).toDouble();
+      final received = (row['received_quantity'] as num).toDouble();
       final returned = (row['returned_quantity'] as num).toDouble();
       final remaining = FinancialRules.remainingQuantity(received, returned);
       if (quantity > remaining + 0.000001) throw StateError('La cantidad supera lo recibido y aún disponible para devolución.');
