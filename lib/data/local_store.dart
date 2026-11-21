@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
+import 'database_backup_service.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import '../domain/workflow.dart';
@@ -263,6 +265,74 @@ class LocalStore {
     _instance = LocalStore._(database);
     await _instance!._seedIfEmpty();
     return _instance!;
+  }
+
+  Future<String?> exportBackup() async {
+    await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    final root = await getDatabasesPath();
+    final source = File(p.join(root, 'eshokfix_mobile_v1.db'));
+    if (!await source.exists()) throw StateError('No se encontró la base local de eShokFix.');
+    final safeName = 'eShokFix-backup-${DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first}.db';
+    return DatabaseBackupService().exportDatabase(
+      sourcePath: source.path,
+      suggestedName: safeName,
+    );
+  }
+
+  Future<void> restoreBackup(String sourcePath) async {
+    final source = File(sourcePath);
+    if (!await source.exists() || await source.length() < 512) {
+      throw ArgumentError('El archivo seleccionado no parece una copia de eShokFix.');
+    }
+
+    final verification = await openDatabase(
+      source.path,
+      readOnly: true,
+      singleInstance: false,
+    );
+    try {
+      final integrity = await verification.rawQuery('PRAGMA quick_check');
+      final check = integrity.isEmpty ? '' : integrity.first.values.first.toString().toLowerCase();
+      if (check != 'ok') throw StateError('La copia no pasó la verificación de integridad de SQLite.');
+      final versionRows = await verification.rawQuery('PRAGMA user_version');
+      final version = (versionRows.first.values.first as num).toInt();
+      if (version < 1 || version > 6) {
+        throw StateError('La versión de la copia ($version) no es compatible con esta app.');
+      }
+      final requiredTables = await verification.rawQuery('''
+        SELECT COUNT(*) total FROM sqlite_master
+        WHERE type='table' AND name IN ('clients','service_orders','inventory_items','sales','settings')
+      ''');
+      if ((requiredTables.first['total'] as num).toInt() != 5) {
+        throw StateError('La copia no contiene las tablas principales de eShokFix.');
+      }
+    } finally {
+      await verification.close();
+    }
+
+    final root = await getDatabasesPath();
+    final target = File(p.join(root, 'eshokfix_mobile_v1.db'));
+    final staged = File('${target.path}.restore');
+    final rollback = File('${target.path}.rollback');
+    await source.copy(staged.path);
+    await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    await db.close();
+
+    try {
+      if (await rollback.exists()) await rollback.delete();
+      if (await target.exists()) await target.rename(rollback.path);
+      await staged.rename(target.path);
+      _instance = null;
+      await LocalStore.open();
+      if (await rollback.exists()) await rollback.delete();
+    } catch (error) {
+      _instance = null;
+      if (await target.exists()) await target.delete();
+      if (await rollback.exists()) await rollback.rename(target.path);
+      rethrow;
+    } finally {
+      if (await staged.exists()) await staged.delete();
+    }
   }
 
   String _now() => DateTime.now().toIso8601String();

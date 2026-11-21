@@ -8,6 +8,8 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import '../data/local_store.dart';
+import '../data/database_backup_service.dart';
+import 'package:flutter/services.dart';
 import '../domain/workflow.dart';
 import '../domain/financial_rules.dart';
 import 'theme.dart';
@@ -1628,6 +1630,57 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) setState(() => loaded = true);
   }
 
+  Future<void> _createBackup() async {
+    try {
+      final uri = await widget.store.exportBackup();
+      if (uri == null) return;
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Copia de seguridad guardada en la ubicación elegida.')),
+      );
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo crear la copia: $error')),
+      );
+    }
+  }
+
+  Future<void> _restoreBackup() async {
+    final path = await DatabaseBackupService().pickDatabaseBackup();
+    if (path == null || !mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Restaurar copia de seguridad'),
+        content: const Text(
+          'La base de datos actual será reemplazada por la copia seleccionada. '
+          'Crea una copia de la base actual antes de continuar. La aplicación se cerrará al terminar.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB65E69)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Reemplazar datos'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await widget.store.restoreBackup(path);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Copia restaurada. Abre de nuevo eShokFix para cargar los datos.')),
+        );
+      }
+      await SystemNavigator.pop();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo restaurar la copia: $error')),
+      );
+    }
+  }
+
   Future<void> _removeDemoData() async {
     final counts = await widget.store.demoDataCounts();
     final total = counts.values.fold<int>(0, (sum, value) => sum + value);
@@ -1707,6 +1760,28 @@ class _SettingsPageState extends State<SettingsPage> {
           icon: const Icon(Icons.save_outlined),
           label: const Text('Guardar cambios'),
         ),
+      ])),
+      const SizedBox(height: 10),
+      GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Base de datos y respaldos', style: TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 5),
+        const Text(
+          'Exporta una copia SQLite a Archivos o restaura una copia previa. Se recomienda respaldar antes de actualizar o limpiar datos.',
+          style: TextStyle(fontSize: 10, color: Color(0xFF7E7489), height: 1.4),
+        ),
+        const SizedBox(height: 9),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.tonalIcon(
+            onPressed: _createBackup,
+            icon: const Icon(Icons.backup_outlined),
+            label: const Text('Crear respaldo'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _restoreBackup,
+            icon: const Icon(Icons.settings_backup_restore),
+            label: const Text('Restaurar'),
+          ),
+        ]),
       ])),
       const SizedBox(height: 10),
       GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
