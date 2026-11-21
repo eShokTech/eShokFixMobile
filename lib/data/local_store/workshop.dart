@@ -578,7 +578,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     String notes = '',
     List<Map<String, Object?>>? paymentBreakdown,
   }) async {
-    requirePermission('orders.pay')
+    requirePermission('orders.pay');
     
 
     if (!amount.isFinite || amount <= 0) {
