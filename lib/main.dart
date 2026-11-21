@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'data/local_store.dart';
 import 'data/auth_service.dart';
@@ -77,7 +75,6 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   bool _loading = true;
   bool _setupRequired = false;
   Object? _error;
-  Timer? _sessionTimer;
   bool _isForeground = true;
 
   @override
@@ -85,9 +82,6 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _auth = AuthService(widget.store.db);
-    _sessionTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (_isForeground && _user != null) _validateSessionOnResume();
-    });
     _restore();
   }
 
@@ -114,6 +108,17 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _touchSession() async {
+    if (_user == null) return;
+    try {
+      await _auth.touchSession();
+    } catch (_) {
+      if (!mounted) return;
+      widget.store.setAuthenticatedUser(null);
+      setState(() => _user = null);
+    }
+  }
+
   Future<void> _validateSessionOnResume() async {
     try {
       final user = await _auth.restoreSession();
@@ -130,7 +135,6 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _sessionTimer?.cancel();
     super.dispose();
   }
 
@@ -157,10 +161,13 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
       )));
     }
     if (_user != null) {
-      return EShokFixShell(
-        store: widget.store,
-        authUser: _user!,
-        onLogout: _logout,
+      return Listener(
+        onPointerDown: (_) => _touchSession(),
+        child: EShokFixShell(
+          store: widget.store,
+          authUser: _user!,
+          onLogout: _logout,
+        ),
       );
     }
     if (_setupRequired) {
