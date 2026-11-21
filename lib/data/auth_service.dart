@@ -45,18 +45,18 @@ class AuthService {
     'ADMIN': {'*'},
     'ENCARGADO': {
       'dashboard.view', 'clients.view', 'clients.manage', 'clients.delete', 'orders.cancel',
-      'orders.view', 'orders.manage', 'orders.authorize', 'orders.pay',
+      'orders.view', 'orders.manage', 'orders.authorize', 'orders.pay', 'orders.payments.view',
       'inventory.view', 'inventory.manage', 'sales.view', 'sales.manage',
       'cash.view', 'cash.manage', 'purchases.view', 'purchases.manage',
       'warranties.view', 'reports.view', 'settings.view', 'settings.manage',
     },
     'TECNICO': {
-      'dashboard.view', 'clients.view', 'clients.manage',
-      'orders.view', 'orders.manage', 'orders.authorize',
+      'dashboard.view', 'clients.view', 'clients.manage', 'settings.read',
+      'orders.view', 'orders.manage', 'orders.authorize', 'orders.payments.view',
       'inventory.view', 'warranties.view',
     },
     'CAJA': {
-      'dashboard.view', 'clients.view', 'orders.view', 'orders.pay',
+      'dashboard.view', 'clients.view', 'settings.read', 'orders.view', 'orders.pay', 'orders.payments.view',
       'sales.view', 'sales.manage', 'cash.view', 'cash.manage',
       'warranties.view', 'reports.view',
     },
