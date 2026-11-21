@@ -212,6 +212,39 @@ class AuthService {
     return AuthUser.fromRow(row);
   }
 
+  Future<void> touchSession() async {
+    final token = await _secureStorage.read(key: sessionKey);
+    if (token == null || token.isEmpty) {
+      throw StateError('La sesión ya no está disponible.');
+    }
+    final digest = sha256.convert(utf8.encode(token)).toString();
+    final rows = await db.rawQuery('''
+      SELECT u.active, s.id session_id, s.expires_at, s.last_seen_at
+      FROM auth_sessions s JOIN users u ON u.id=s.user_id
+      WHERE s.token_hash=? AND s.revoked_at IS NULL LIMIT 1
+    ''', [digest]);
+    if (rows.isEmpty) {
+      await _secureStorage.delete(key: sessionKey);
+      throw StateError('La sesión ya no es válida.');
+    }
+    final row = rows.first;
+    final now = DateTime.now();
+    final expiry = DateTime.tryParse(row['expires_at'] as String? ?? '');
+    final lastSeen = DateTime.tryParse(row['last_seen_at'] as String? ?? '');
+    if ((row['active'] as num?)?.toInt() != 1 ||
+        expiry == null || !expiry.isAfter(now) ||
+        lastSeen == null || now.difference(lastSeen) > idleLifetime) {
+      await db.update('auth_sessions',
+          {'revoked_at': now.toIso8601String()},
+          where: 'id=?', whereArgs: [row['session_id']]);
+      await _secureStorage.delete(key: sessionKey);
+      throw StateError('La sesión expiró por tiempo o inactividad.');
+    }
+    await db.update('auth_sessions',
+        {'last_seen_at': now.toIso8601String()},
+        where: 'id=?', whereArgs: [row['session_id']]);
+  }
+
   Future<void> logout() async {
     final token = await _secureStorage.read(key: sessionKey);
     if (token != null && token.isNotEmpty) {
