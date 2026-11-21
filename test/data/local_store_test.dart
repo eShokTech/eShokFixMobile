@@ -427,4 +427,45 @@ void main() {
     );
   });
 
+
+  test('inventory price changes require a reason and retain actor and before/after values', () async {
+    final itemId = await store.saveInventoryItem(
+      name: 'Cable con historial de precio',
+      sku: 'PRICE-HISTORY-01',
+      stock: 4,
+      cost: 100,
+      price: 150,
+    );
+
+    await expectLater(
+      store.saveInventoryItem(
+        id: itemId,
+        name: 'Cable con historial de precio',
+        sku: 'PRICE-HISTORY-01',
+        stock: 4,
+        cost: 100,
+        price: 165,
+      ),
+      throwsArgumentError,
+    );
+    expect(await store.inventoryPriceHistory(itemId), isEmpty);
+
+    await store.saveInventoryItem(
+      id: itemId,
+      name: 'Cable con historial de precio',
+      sku: 'PRICE-HISTORY-01',
+      stock: 4,
+      cost: 100,
+      price: 165,
+      priceChangeReason: 'Nuevo costo del proveedor',
+    );
+
+    final history = await store.inventoryPriceHistory(itemId);
+    expect(history, hasLength(1));
+    expect((history.single['old_price'] as num).toDouble(), 150);
+    expect((history.single['new_price'] as num).toDouble(), 165);
+    expect(history.single['changed_by'], 1);
+    expect(history.single['reason'], 'Nuevo costo del proveedor');
+  });
+
 }
