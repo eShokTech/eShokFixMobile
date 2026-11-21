@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../data/auth_service.dart';
 import 'theme.dart';
@@ -63,11 +64,11 @@ class _InitialAdminPageState extends State<InitialAdminPage> {
       const SizedBox(height: 12),
       TextField(controller: _username, autocorrect: false, decoration: const InputDecoration(labelText: 'Usuario', prefixIcon: Icon(Icons.alternate_email))),
       const SizedBox(height: 12),
-      TextField(controller: _password, obscureText: !_showPassword, decoration: InputDecoration(labelText: 'Contraseña', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => _showPassword = !_showPassword), icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility)))),
+      TextField(controller: _password, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)], obscureText: !_showPassword, decoration: InputDecoration(labelText: 'PIN de 6 dígitos', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => _showPassword = !_showPassword), icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility)))),
       const SizedBox(height: 12),
-      TextField(controller: _confirm, obscureText: true, decoration: const InputDecoration(labelText: 'Confirmar contraseña', prefixIcon: Icon(Icons.lock_reset_outlined))),
+      TextField(controller: _confirm, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)], obscureText: true, decoration: const InputDecoration(labelText: 'Confirmar PIN', prefixIcon: Icon(Icons.lock_reset_outlined))),
       const SizedBox(height: 8),
-      const Text('Mínimo 10 caracteres, con mayúscula, minúscula y número.', style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+      const Text('El PIN debe tener exactamente 6 números.', style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
       if (_error != null) ...[const SizedBox(height: 12), _ErrorText(_error!)],
       const SizedBox(height: 20),
       FilledButton(onPressed: _busy ? null : _setup, child: _busy ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Crear administrador y entrar')),
@@ -118,7 +119,7 @@ class _LoginPageState extends State<LoginPage> {
     child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(controller: _username, autocorrect: false, textInputAction: TextInputAction.next, decoration: const InputDecoration(labelText: 'Usuario', prefixIcon: Icon(Icons.person_outline))),
       const SizedBox(height: 12),
-      TextField(controller: _password, obscureText: !_showPassword, onSubmitted: (_) => _login(), decoration: InputDecoration(labelText: 'Contraseña', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => _showPassword = !_showPassword), icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility)))),
+      TextField(controller: _password, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)], obscureText: !_showPassword, onSubmitted: (_) => _login(), decoration: InputDecoration(labelText: 'PIN de 6 dígitos', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => _showPassword = !_showPassword), icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility)))),
       if (_error != null) ...[const SizedBox(height: 12), _ErrorText(_error!)],
       const SizedBox(height: 20),
       FilledButton(onPressed: _busy ? null : _login, child: _busy ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Iniciar sesión')),
