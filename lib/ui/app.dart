@@ -62,7 +62,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'reportes' => 'reports.view',
       'usuarios' => 'users.manage',
       'configuracion' => 'settings.view',
-      'whatsapp' || 'licencias' => 'users.manage',
+      'whatsapp' || 'licencias' => 'settings.read',
       _ => 'dashboard.view',
     };
     return AuthService.can(widget.authUser.role, permission);
