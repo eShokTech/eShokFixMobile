@@ -109,7 +109,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
   }
 
   Future<String> setting(String key, {String fallback = ''}) async {
-    requirePermission('settings.view');
+    requirePermission('settings.read');
     
 
     final rows = await db.query('settings', columns: ['value'], where: 'key=?', whereArgs: [key], limit: 1);
