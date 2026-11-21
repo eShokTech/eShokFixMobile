@@ -1,13 +1,15 @@
 part of '../local_store.dart';
 
 extension LocalStoreInventoryPurchaseOperations on LocalStore {
-  Future<List<Map<String, Object?>>> inventory({ requirePermission('inventory.view');String query = ''}) {
+  Future<List<Map<String, Object?>>> inventory({ String query = ''}) {
+    requirePermission('inventory.view');
     final q = '%${query.trim()}%';
     return db.rawQuery('SELECT * FROM inventory_items WHERE name LIKE ? OR COALESCE(sku,\'\') LIKE ? ORDER BY name COLLATE NOCASE', [q, q]);
   }
 
   Future<int> saveInventoryItem({int? id, String sku = '', required String name, String category = 'General', double stock = 0, double minStock = 0, double cost = 0, double price = 0, String location = ''}) async {
     requirePermission('inventory.manage');
+    
     
     
 
@@ -77,6 +79,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
   Future<void> adjustInventory(int itemId, double quantity, String reason) async {
     requirePermission('inventory.manage');
     
+    
 
     if (!quantity.isFinite) throw ArgumentError('La cantidad debe ser un número válido.');
     if (quantity == 0) return;
@@ -94,14 +97,15 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
     });
   }
 
-  Future<List<Map<String, Object?>>> suppliers({ requirePermission('purchases.view');String query = ''}) {
+  Future<List<Map<String, Object?>>> suppliers({ String query = ''}) {
+    requirePermission('purchases.view');
     final q = '%${query.trim()}%';
     return db.query('suppliers',
       where: "name LIKE ? OR COALESCE(phone,'') LIKE ? OR COALESCE(tax_id,'') LIKE ?",
       whereArgs: [q, q, q], orderBy: 'name COLLATE NOCASE');
   }
 
-  Future<int> saveSupplier({ requirePermission('purchases.manage');
+  Future<int> saveSupplier({ 
     int? id,
     required String name,
     String phone = '',
@@ -111,6 +115,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
     String address = '',
     String notes = '',
   }) async {
+    requirePermission('purchases.manage');
     
     
 
@@ -150,6 +155,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
   Future<List<Map<String, Object?>>> purchases({String query = ''}) async {
     requirePermission('purchases.view');
     
+    
 
     final q = '%${query.trim()}%';
     return db.rawQuery('''SELECT p.*, s.name supplier_name,
@@ -159,11 +165,12 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
       ORDER BY p.id DESC''', [q, q]);
   }
 
-  Future<List<Map<String, Object?>>> purchaseItems(int purchaseId) { requirePermission('purchases.view'); return db.rawQuery('''SELECT pi.*, i.sku FROM purchase_items pi
+  Future<List<Map<String, Object?>>> purchaseItems(int purchaseId) { return db.rawQuery('''SELECT pi.*, i.sku FROM purchase_items pi
+    requirePermission('purchases.view');
       JOIN inventory_items i ON i.id=pi.item_id
       WHERE pi.purchase_id=? ORDER BY pi.id''', [purchaseId]); }
 
-  Future<int> createPurchase({ requirePermission('purchases.manage');
+  Future<int> createPurchase({ 
     required int supplierId,
     required List<Map<String, Object?>> items,
     double discount = 0,
@@ -173,6 +180,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
     bool receiveImmediately = true,
     String notes = '',
   }) async {
+    requirePermission('purchases.manage');
     
     
 
@@ -316,6 +324,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
     List<Map<String, Object?>>? paymentBreakdown,
   }) async {
     requirePermission('purchases.manage');
+    
     
 
     if (!amount.isFinite || amount <= 0) {
