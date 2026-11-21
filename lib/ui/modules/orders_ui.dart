@@ -296,10 +296,117 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
 
   Future<void> _payment(double balance) async {
     final amount = TextEditingController(text: balance.toStringAsFixed(2));
+    final secondAmount = TextEditingController(text: (balance / 2).toStringAsFixed(2));
     final ref = TextEditingController();
     String method = 'EFECTIVO';
-    final result = await showDialog<bool>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, setD) => AlertDialog(title: const Text('Registrar pago'), content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Importe')), const SizedBox(height: 8), DropdownButtonFormField<String>(value: method, decoration: const InputDecoration(labelText: 'Método de pago'), items: const ['EFECTIVO','TRANSFERENCIA','TARJETA','OTRO'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setD(() => method = v ?? method)), const SizedBox(height: 8), TextField(controller: ref, decoration: const InputDecoration(labelText: 'Referencia / nota'))]), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Registrar'))])));
-    if (result == true) { try { await widget.store.addOrderPayment(widget.orderId, double.parse(amount.text), method, reference: ref.text); if (mounted) setState(_refresh); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } }
+    String secondMethod = 'TARJETA';
+    bool split = false;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) => AlertDialog(
+          title: const Text('Registrar pago'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            TextField(
+              controller: amount,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Importe del pago'),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: method,
+              decoration: const InputDecoration(labelText: 'Primer medio de pago'),
+              items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+                .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+              onChanged: (v) => setD(() => method = v ?? method),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Dividir este pago', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              subtitle: const Text('Registrar dos medios de pago en el mismo abono', style: TextStyle(fontSize: 10)),
+              value: split,
+              onChanged: (value) => setD(() {
+                split = value;
+                if (value) {
+                  final total = double.tryParse(amount.text.trim().replaceAll(',', '.')) ?? 0;
+                  secondAmount.text = (total / 2).toStringAsFixed(2);
+                }
+              }),
+            ),
+            if (split) ...[
+              TextField(
+                controller: secondAmount,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Importe del segundo medio'),
+                onChanged: (_) => setD(() {}),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: secondMethod,
+                decoration: const InputDecoration(labelText: 'Segundo medio de pago'),
+                items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+                  .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                onChanged: (v) => setD(() => secondMethod = v ?? secondMethod),
+              ),
+              Builder(builder: (context) {
+                final total = double.tryParse(amount.text.trim().replaceAll(',', '.')) ?? 0;
+                final second = double.tryParse(secondAmount.text.trim().replaceAll(',', '.')) ?? 0;
+                return Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Primer medio: ${(total - second).toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF81778D)),
+                  ),
+                );
+              }),
+            ],
+            const SizedBox(height: 8),
+            TextField(
+              controller: ref,
+              decoration: const InputDecoration(labelText: 'Referencia / nota'),
+            ),
+          ]),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Registrar')),
+          ],
+        ),
+      ),
+    );
+
+    if (result == true) {
+      try {
+        final paymentAmount = double.parse(amount.text.trim().replaceAll(',', '.'));
+        List<Map<String, Object?>>? breakdown;
+        if (split) {
+          final second = double.parse(secondAmount.text.trim().replaceAll(',', '.'));
+          final first = paymentAmount - second;
+          if (!first.isFinite || !second.isFinite || first <= 0 || second <= 0) {
+            throw ArgumentError('Ambos medios deben tener un importe mayor a cero y sumar el abono.');
+          }
+          breakdown = [
+            {'method': method, 'amount': first},
+            {'method': secondMethod, 'amount': second},
+          ];
+        }
+        await widget.store.addOrderPayment(
+          widget.orderId,
+          paymentAmount,
+          method,
+          reference: ref.text,
+          paymentBreakdown: breakdown,
+        );
+        if (mounted) setState(_refresh);
+      } catch (error) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$error')),
+        );
+      }
+    }
+    amount.dispose();
+    secondAmount.dispose();
+    ref.dispose();
   }
   Future<void> _evidence() async {
     final picker = ImagePicker();
