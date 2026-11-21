@@ -393,8 +393,8 @@ class _NewOrderDialogState extends State<NewOrderDialog> {
   );
 }
 
-Widget _field(TextEditingController c, String label, {bool required = false, bool number = false, int lines = 1}) => TextFormField(
-  controller: c, maxLines: lines, keyboardType: number ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+Widget _field(TextEditingController c, String label, {bool required = false, bool number = false, int lines = 1, ValueChanged<String>? onChanged}) => TextFormField(
+  controller: c, maxLines: lines, onChanged: onChanged, keyboardType: number ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
   decoration: InputDecoration(labelText: label, isDense: true), validator: required ? (v) => (v == null || v.trim().isEmpty) ? 'Campo requerido' : null : null,
 );
 
@@ -1324,15 +1324,15 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
               ]),
               const SizedBox(height: 6),
               Row(children: [
-                Expanded(child: _field(line.quantity, 'Cantidad', required: true, number: true)),
+                Expanded(child: _field(line.quantity, 'Cantidad', required: true, number: true, onChanged: (_) => setState(() {}))),
                 const SizedBox(width: 8),
-                Expanded(child: _field(line.unitCost, 'Costo unitario', required: true, number: true)),
+                Expanded(child: _field(line.unitCost, 'Costo unitario', required: true, number: true, onChanged: (_) => setState(() {}))),
               ]),
             ]),
           );
         }),
         const Divider(),
-        _field(discount, 'Descuento global', number: true),
+        _field(discount, 'Descuento global', number: true, onChanged: (_) => setState(() {})),
         const SizedBox(height: 8),
         _field(paid, 'Pago inicial al proveedor', number: true),
         const SizedBox(height: 8),
