@@ -1246,25 +1246,6 @@ class _SaleDialogState extends State<SaleDialog> {
               style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
           ),
         ],
-        if (splitPayment) ...[
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: _field(splitAmount, 'Importe segundo pago', number: true)),
-            const SizedBox(width: 8),
-            Expanded(child: DropdownButtonFormField<String>(
-              initialValue: secondPaymentMethod,
-              decoration: const InputDecoration(labelText: 'Segundo medio'),
-              items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
-                .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-              onChanged: (value) => setState(() => secondPaymentMethod = value ?? secondPaymentMethod),
-            )),
-          ]),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Text('Primer pago: ${_money((double.tryParse(paid.text.replaceAll(',', '.')) ?? 0) - (double.tryParse(splitAmount.text.replaceAll(',', '.')) ?? 0))}',
-              style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
-          ),
-        ],
         const SizedBox(height: 8),
         _field(notes, 'Notas / referencia'),
         const SizedBox(height: 12),
@@ -2318,6 +2299,25 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
             .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
           onChanged: (v) => setState(() => paymentMethod = v ?? paymentMethod),
         ),
+        if (splitPayment) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: _field(splitAmount, 'Importe segundo pago', number: true)),
+            const SizedBox(width: 8),
+            Expanded(child: DropdownButtonFormField<String>(
+              initialValue: secondPaymentMethod,
+              decoration: const InputDecoration(labelText: 'Segundo medio'),
+              items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+                .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+              onChanged: (v) => setState(() => secondPaymentMethod = v ?? secondPaymentMethod),
+            )),
+          ]),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text('Primer pago: ${_money((double.tryParse(paid.text.replaceAll(',', '.')) ?? 0) - (double.tryParse(splitAmount.text.replaceAll(',', '.')) ?? 0))}',
+              style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+          ),
+        ],
         const SizedBox(height: 8),
         _field(notes, 'Notas / referencia'),
         const SizedBox(height: 12),
