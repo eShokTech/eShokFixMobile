@@ -69,7 +69,7 @@ class AuthGate extends StatefulWidget {
   State<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate> {
+class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   late final AuthService _auth;
   AuthUser? _user;
   bool _loading = true;
@@ -79,6 +79,7 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _auth = AuthService(widget.store.db);
     _restore();
   }
@@ -96,6 +97,32 @@ class _AuthGateState extends State<AuthGate> {
     } catch (error) {
       if (mounted) setState(() { _error = error; _loading = false; });
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _user != null) {
+      _validateSessionOnResume();
+    }
+  }
+
+  Future<void> _validateSessionOnResume() async {
+    try {
+      final user = await _auth.restoreSession();
+      if (!mounted) return;
+      widget.store.setAuthenticatedUser(user);
+      setState(() => _user = user);
+    } catch (_) {
+      if (!mounted) return;
+      widget.store.setAuthenticatedUser(null);
+      setState(() => _user = null);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   void _authenticated(AuthUser user) {
