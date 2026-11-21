@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'data/local_store.dart';
 import 'data/auth_service.dart';
@@ -75,12 +77,16 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   bool _loading = true;
   bool _setupRequired = false;
   Object? _error;
+  Timer? _sessionTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _auth = AuthService(widget.store.db);
+    _sessionTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      if (_user != null) _validateSessionOnResume();
+    });
     _restore();
   }
 
@@ -122,6 +128,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _sessionTimer?.cancel();
     super.dispose();
   }
 
