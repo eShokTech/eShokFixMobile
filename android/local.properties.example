@@ -1,0 +1,4 @@
+# Android Studio / Flutter crean local.properties en cada PC.
+# No copies rutas de otra computadora.
+# flutter.sdk=C:\\src\\flutter
+# sdk.dir=C:\\Users\\TU_USUARIO\\AppData\\Local\\Android\\sdk

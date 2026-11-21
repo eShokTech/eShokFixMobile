@@ -1,0 +1,29 @@
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub/
+build/
+android/.gradle/
+android/local.properties
+.idea/
+.vscode/
+*.iml
+*.log
+.DS_Store
+
+eshokfix_mobile_rebuild.zip
+gradle-error.txt
+
+# Android / Gradle
+.gradle/
+.kotlin/
+**/.gradle/
+**/.kotlin/
+local.properties
+**/local.properties
+
+# Archivos locales y temporales
+*.zip
+*.log
+gradle-error.txt

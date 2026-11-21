@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+WRAPPER_JAR="$APP_HOME/gradle/wrapper/gradle-wrapper.jar"
+if [ ! -f "$WRAPPER_JAR" ]; then
+  echo "Falta gradle-wrapper.jar. En Windows usa gradlew.bat para descargarlo automáticamente."
+  exit 1
+fi
+exec java -classpath "$WRAPPER_JAR" org.gradle.wrapper.GradleWrapperMain "$@"
