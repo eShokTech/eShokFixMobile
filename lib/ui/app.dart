@@ -398,6 +398,80 @@ Widget _field(TextEditingController c, String label, {bool required = false, boo
   decoration: InputDecoration(labelText: label, isDense: true), validator: required ? (v) => (v == null || v.trim().isEmpty) ? 'Campo requerido' : null : null,
 );
 
+ 
+class CustomerAuthorizationDialog extends StatefulWidget {
+  const CustomerAuthorizationDialog({super.key});
+  @override
+  State<CustomerAuthorizationDialog> createState() => _CustomerAuthorizationDialogState();
+}
+
+class _CustomerAuthorizationDialogState extends State<CustomerAuthorizationDialog> {
+  final authorizedBy = TextEditingController();
+  final note = TextEditingController();
+  String method = 'PRESENCIAL';
+
+  @override
+  void dispose() {
+    authorizedBy.dispose();
+    note.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Autorización del cliente'),
+    content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Text(
+        'Registra quién aprobó el diagnóstico y el presupuesto antes de iniciar la reparación o solicitar refacciones.',
+        style: TextStyle(fontSize: 11, color: Color(0xFF81778D)),
+      ),
+      const SizedBox(height: 10),
+      TextField(
+        controller: authorizedBy,
+        decoration: const InputDecoration(labelText: 'Nombre de quien autoriza'),
+      ),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<String>(
+        initialValue: method,
+        decoration: const InputDecoration(labelText: 'Medio de autorización'),
+        items: const [
+          DropdownMenuItem(value: 'PRESENCIAL', child: Text('Presencial')),
+          DropdownMenuItem(value: 'LLAMADA', child: Text('Llamada telefónica')),
+          DropdownMenuItem(value: 'WHATSAPP', child: Text('WhatsApp')),
+          DropdownMenuItem(value: 'OTRO', child: Text('Otro medio')),
+        ],
+        onChanged: (value) => setState(() => method = value ?? method),
+      ),
+      const SizedBox(height: 8),
+      TextField(
+        controller: note,
+        maxLines: 2,
+        decoration: const InputDecoration(labelText: 'Nota / alcance autorizado'),
+      ),
+    ])),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+      FilledButton(
+        onPressed: () {
+          if (authorizedBy.text.trim().isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Indica quién autorizó el servicio.'),
+            ));
+            return;
+          }
+          Navigator.pop(context, {
+            'authorizedBy': authorizedBy.text.trim(),
+            'method': method,
+            'note': note.text.trim(),
+          });
+        },
+        child: const Text('Guardar autorización'),
+      ),
+    ],
+  );
+}
+
+
 class OrderDetailPage extends StatefulWidget {
   const OrderDetailPage({super.key, required this.store, required this.orderId});
   final LocalStore store;
@@ -428,6 +502,27 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       builder: (_) => OrderPartDialog(store: widget.store, orderId: widget.orderId),
     );
     if (saved == true && mounted) setState(_refresh);
+  }
+
+  Future<void> _authorize() async {
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (_) => const CustomerAuthorizationDialog(),
+    );
+    if (result == null) return;
+    try {
+      await widget.store.authorizeOrder(
+        widget.orderId,
+        authorizedBy: result['authorizedBy'] ?? '',
+        method: result['method'] ?? 'PRESENCIAL',
+        note: result['note'] ?? '',
+      );
+      if (mounted) setState(_refresh);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e')),
+      );
+    }
   }
 
   Future<void> _payment(double balance) async {
@@ -486,7 +581,44 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         SectionHeading('Flujo de trabajo', subtitle: 'Las transiciones no válidas se bloquean'),
         const SizedBox(height: 8),
         GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Wrap(spacing: 7, runSpacing: 7, children: OrderWorkflow.transitions[status]!.map((next) => ActionChip(label: Text(OrderWorkflow.label(next)), avatar: const Icon(Icons.arrow_forward, size: 15), onPressed: () => _status(next), backgroundColor: eShokPurpleLight.withValues(alpha: .28))).toList()),
+          Wrap(spacing: 7, runSpacing: 7, children: OrderWorkflow.transitions[status]!.map((next) {
+            final authorizationPending = _str(o['authorization_status'], 'PENDING') != 'APPROVED';
+            final needsAuthorization = next == 'ESPERA_REFACCION' || next == 'REPARACION';
+            return ActionChip(
+              label: Text(OrderWorkflow.label(next)),
+              avatar: const Icon(Icons.arrow_forward, size: 15),
+              onPressed: needsAuthorization && authorizationPending ? null : () => _status(next),
+              backgroundColor: eShokPurpleLight.withValues(alpha: .28),
+            );
+          }).toList()),
+          if (status == 'ESPERA_AUTORIZACION') ...[
+            const SizedBox(height: 10),
+            if (_str(o['authorization_status'], 'PENDING') == 'APPROVED')
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEAF5EF),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('AUTORIZACIÓN REGISTRADA', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Color(0xFF258A62))),
+                  const SizedBox(height: 4),
+                  Text('${_str(o['authorized_by'])} · ${_str(o['authorization_method'])}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                  Text(_date(o['authorized_at']), style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+                  if (_str(o['authorization_note']).isNotEmpty) Text(_str(o['authorization_note']), style: const TextStyle(fontSize: 10)),
+                ]),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _authorize,
+                  icon: const Icon(Icons.verified_user_outlined),
+                  label: const Text('Registrar autorización del cliente'),
+                ),
+              ),
+          ],
           const SizedBox(height: 8),
           OutlinedButton.icon(onPressed: () => _diagnosis(_str(o['diagnosis']), _str(o['notes'])), icon: const Icon(Icons.edit_note), label: const Text('Editar diagnóstico y notas')),
         ])),
