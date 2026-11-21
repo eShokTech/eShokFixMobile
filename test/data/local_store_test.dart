@@ -4,6 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:eshokfix_mobile/data/local_store.dart';
+import 'package:eshokfix_mobile/data/auth_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,7 @@ void main() {
     databasePath = p.join(await getDatabasesPath(), 'eshokfix_mobile_v1.db');
     await deleteDatabase(databasePath);
     store = await LocalStore.open();
+    store.setAuthenticatedUser(const AuthUser(id: 1, username: 'test-admin', displayName: 'Administrador de pruebas', role: 'ADMIN'));
   });
 
   tearDown(() async {
@@ -288,6 +290,29 @@ void main() {
     );
     final clients = await store.clients(query: 'Cliente con historial');
     expect(clients, hasLength(1));
+  });
+
+  test('role permissions are enforced at the data layer', () async {
+    store.setAuthenticatedUser(const AuthUser(
+      id: 2, username: 'tecnico', displayName: 'Técnico', role: 'TECNICO',
+    ));
+    expect(await store.clients(), isA<List<Map<String, Object?>>>());
+    expect(await store.inventory(), isA<List<Map<String, Object?>>>());
+    await expectLater(
+      store.saveInventoryItem(name: 'No autorizado', stock: 1),
+      throwsA(isA<StateError>()),
+    );
+    await expectLater(
+      store.cashSummary(),
+      throwsA(isA<StateError>()),
+    );
+    await expectLater(
+      store.createSaleCart(
+        items: [{'description': 'Servicio', 'quantity': 1, 'unit_price': 100}],
+        paymentMethod: 'EFECTIVO',
+      ),
+      throwsA(isA<StateError>()),
+    );
   });
 
 }
