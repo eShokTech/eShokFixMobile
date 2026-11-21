@@ -517,6 +517,9 @@ class PurchaseDetailDialog extends StatefulWidget {
 
 class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
   final amount = TextEditingController();
+  final secondAmount = TextEditingController();
+  String secondMethod = 'TARJETA';
+  bool splitPayment = false;
   Future<void> _receiveLine(Map<String, Object?> line) async {
     final pending = FinancialRules.remainingQuantity(
       _num(line['quantity']), _num(line['received_quantity']),
@@ -622,6 +625,7 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
   @override
   void dispose() {
     amount.dispose();
+    secondAmount.dispose();
     super.dispose();
   }
 
@@ -693,11 +697,39 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             initialValue: method,
-            decoration: const InputDecoration(labelText: 'Método'),
+            decoration: const InputDecoration(labelText: 'Primer medio'),
             items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
               .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
             onChanged: (v) => setState(() => method = v ?? method),
           ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Dividir este abono', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            subtitle: const Text('Registrar dos medios de pago', style: TextStyle(fontSize: 10)),
+            value: splitPayment,
+            onChanged: (value) => setState(() {
+              splitPayment = value;
+              if (value) {
+                final total = double.tryParse(amount.text.trim().replaceAll(',', '.')) ?? 0;
+                secondAmount.text = (total / 2).toStringAsFixed(2);
+              }
+            }),
+          ),
+          if (splitPayment) ...[
+            TextField(
+              controller: secondAmount,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Importe segundo medio'),
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              initialValue: secondMethod,
+              decoration: const InputDecoration(labelText: 'Segundo medio'),
+              items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+                .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+              onChanged: (v) => setState(() => secondMethod = v ?? secondMethod),
+            ),
+          ],
         ],
       ])),
       actions: [
@@ -711,7 +743,24 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
             }
             setState(() => saving = true);
             try {
-              await widget.store.recordPurchasePayment(widget.purchase['id'] as int, value, method);
+              List<Map<String, Object?>>? breakdown;
+              if (splitPayment) {
+                final second = double.tryParse(secondAmount.text.trim().replaceAll(',', '.'));
+                if (second == null || !second.isFinite || second <= 0 ||
+                    value - second <= 0) {
+                  throw ArgumentError('Ambos medios deben tener importes mayores a cero y sumar el abono.');
+                }
+                breakdown = [
+                  {'method': method, 'amount': FinancialRules.money(value - second)},
+                  {'method': secondMethod, 'amount': FinancialRules.money(second)},
+                ];
+              }
+              await widget.store.recordPurchasePayment(
+                widget.purchase['id'] as int,
+                value,
+                method,
+                paymentBreakdown: breakdown,
+              );
               if (mounted) Navigator.pop(context, true);
             } catch (e) {
               if (mounted) {

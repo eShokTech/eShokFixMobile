@@ -291,50 +291,85 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
   }
 
   Future<void> recordPurchasePayment(
-    int purchaseId, double amount, String method, {String reference = ''}
-  ) async {
-    if (!amount.isFinite || amount <= 0) throw ArgumentError('El pago debe ser mayor a cero y válido.');
-    final normalizedMethod = method.trim().toUpperCase();
-    if (!FinancialRules.paymentMethods.contains(normalizedMethod)) {
-      throw ArgumentError('Selecciona un medio de pago válido.');
+    int purchaseId,
+    double amount,
+    String method, {
+    String reference = '',
+    List<Map<String, Object?>>? paymentBreakdown,
+  }) async {
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError('El pago debe ser mayor a cero y válido.');
     }
     final normalizedAmount = FinancialRules.money(amount);
+    final tender = FinancialRules.normalizePayments(
+      total: normalizedAmount,
+      fallbackMethod: method,
+      payments: paymentBreakdown,
+    );
+    final normalizedMethod = tender.length > 1
+        ? 'MIXTO'
+        : tender.first['method'] as String;
     final now = _now();
+
     await db.transaction((tx) async {
-      final rows = await tx.query('purchases',
+      final rows = await tx.query(
+        'purchases',
         columns: ['folio', 'total', 'paid'],
-        where: 'id=?', whereArgs: [purchaseId], limit: 1);
+        where: 'id=?',
+        whereArgs: [purchaseId],
+        limit: 1,
+      );
       if (rows.isEmpty) throw StateError('Compra no encontrada.');
       final total = (rows.first['total'] as num).toDouble();
       final paid = (rows.first['paid'] as num).toDouble();
       if (normalizedAmount > PurchaseAccounting.balance(total, paid) + 0.000001) {
         throw StateError('El pago supera el saldo pendiente de la compra.');
       }
+
       final newPaid = FinancialRules.money(paid + normalizedAmount);
       await tx.update('purchases', {
         'paid': newPaid,
         'payment_status': PurchaseAccounting.paymentStatus(total, newPaid),
         'payment_method': normalizedMethod,
       }, where: 'id=?', whereArgs: [purchaseId]);
-      await tx.insert('purchase_payments', {
-        'purchase_id': purchaseId, 'method': normalizedMethod, 'amount': normalizedAmount,
-        'reference': reference.trim(), 'created_at': now,
-      });
-      await tx.insert('cash_movements', {
-        'movement_type': 'OUT', 'amount': normalizedAmount,
-        'concept': 'Abono a compra ${rows.first['folio']}',
-        'reference': reference.trim().isEmpty ? normalizedMethod : reference.trim(),
-        'payment_method': normalizedMethod, 'created_at': now,
-      });
+
+      for (final part in tender) {
+        final partMethod = part['method'] as String;
+        final partAmount = part['amount'] as double;
+        await tx.insert('purchase_payments', {
+          'purchase_id': purchaseId,
+          'method': partMethod,
+          'amount': partAmount,
+          'reference': reference.trim(),
+          'created_at': now,
+        });
+        await tx.insert('cash_movements', {
+          'movement_type': 'OUT',
+          'amount': partAmount,
+          'concept': 'Abono a compra ${rows.first['folio']}',
+          'reference': reference.trim().isEmpty ? partMethod : reference.trim(),
+          'payment_method': partMethod,
+          'created_at': now,
+        });
+      }
+
       await tx.insert('audit_log', {
-        'entity': 'purchase', 'entity_id': purchaseId,
-        'action': 'PAYMENT', 'detail': '$normalizedAmount · $normalizedMethod',
+        'entity': 'purchase',
+        'entity_id': purchaseId,
+        'action': 'PAYMENT',
+        'detail': '$normalizedAmount · $normalizedMethod',
         'created_at': now,
       });
       await tx.insert('sync_outbox', {
-        'entity': 'purchase', 'entity_id': purchaseId,
+        'entity': 'purchase',
+        'entity_id': purchaseId,
         'operation': 'PAYMENT',
-        'payload': jsonEncode({'amount': normalizedAmount, 'method': normalizedMethod, 'reference': reference}),
+        'payload': jsonEncode({
+          'amount': normalizedAmount,
+          'method': normalizedMethod,
+          'breakdown': tender,
+          'reference': reference.trim(),
+        }),
         'created_at': now,
       });
     });
