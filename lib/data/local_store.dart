@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'auth_service.dart';
 import 'dart:io';
 import 'database_backup_service.dart';
 import 'package:path/path.dart' as p;
@@ -163,7 +164,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 8,
+      version: 9,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -242,7 +243,15 @@ class LocalStore {
         batch.execute('''CREATE TABLE users(
           id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL,
           display_name TEXT NOT NULL, role TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1,
-          created_at TEXT NOT NULL)''');
+          password_salt TEXT DEFAULT '', password_hash TEXT DEFAULT '',
+          failed_attempts INTEGER NOT NULL DEFAULT 0, locked_until TEXT,
+          last_login_at TEXT, created_at TEXT NOT NULL)''');
+        batch.execute('''CREATE TABLE auth_sessions(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+          token_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT,
+          FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)''');
+        batch.execute('CREATE INDEX idx_auth_sessions_user ON auth_sessions(user_id, revoked_at)');
         batch.execute('''CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)''');
         batch.execute('''CREATE TABLE audit_log(
           id INTEGER PRIMARY KEY AUTOINCREMENT, entity TEXT NOT NULL, entity_id INTEGER,
@@ -308,6 +317,19 @@ class LocalStore {
           await db.execute("ALTER TABLE purchase_items ADD COLUMN received_quantity REAL NOT NULL DEFAULT 0");
           await db.execute("UPDATE purchase_items SET received_quantity=quantity");
         }
+        if (oldVersion < 9) {
+          await db.execute("ALTER TABLE users ADD COLUMN password_salt TEXT DEFAULT ''");
+          await db.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''");
+          await db.execute("ALTER TABLE users ADD COLUMN failed_attempts INTEGER NOT NULL DEFAULT 0");
+          await db.execute("ALTER TABLE users ADD COLUMN locked_until TEXT");
+          await db.execute("ALTER TABLE users ADD COLUMN last_login_at TEXT");
+          await db.execute('''CREATE TABLE auth_sessions(
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL, expires_at TEXT NOT NULL, revoked_at TEXT,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE)''');
+          await db.execute('CREATE INDEX idx_auth_sessions_user ON auth_sessions(user_id, revoked_at)');
+        }
       },
     );
     _instance = LocalStore._(database);
@@ -349,7 +371,7 @@ class LocalStore {
       if (check != 'ok') throw StateError('La copia no pasó la verificación de integridad de SQLite.');
       final versionRows = await verification.rawQuery('PRAGMA user_version');
       final version = (versionRows.first.values.first as num).toInt();
-      if (version < 1 || version > 8) {
+      if (version < 1 || version > 9) {
         throw StateError('La versión de la copia ($version) no es compatible con esta app.');
       }
       final requiredTables = await verification.rawQuery('''
