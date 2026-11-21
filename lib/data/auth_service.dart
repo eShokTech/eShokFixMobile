@@ -374,8 +374,11 @@ class AuthService {
   }
 
   void _validatePassword(String password) {
-    if (!RegExp(r'^\d{6}
-
+    if (password.length != 6 ||
+        password.codeUnits.any((digit) => digit < 48 || digit > 57)) {
+      throw ArgumentError('El PIN debe contener exactamente 6 dígitos numéricos.');
+    }
+  }
   Uint8List _derive(String password, List<int> salt) {
     final key = utf8.encode(password);
     final block = Uint8List(salt.length + 4)..setRange(0, salt.length, salt);
