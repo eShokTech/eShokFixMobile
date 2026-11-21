@@ -157,6 +157,20 @@ Future<void> _createPurchaseTables(DatabaseExecutor db) async {
 class LocalStore {
   LocalStore._(this.db);
   final Database db;
+  AuthUser? _authenticatedUser;
+  AuthUser? get authenticatedUser => _authenticatedUser;
+
+  void setAuthenticatedUser(AuthUser? user) {
+    _authenticatedUser = user;
+  }
+
+  void requirePermission(String permission) {
+    final user = _authenticatedUser;
+    if (user == null || !AuthService.can(user.role, permission)) {
+      throw StateError('No tienes permiso para realizar esta operación.');
+    }
+  }
+
   static LocalStore? _instance;
 
   static Future<LocalStore> open() async {
@@ -343,6 +357,7 @@ class LocalStore {
   }
 
   Future<String?> exportBackup() async {
+    requirePermission('settings.manage');
     await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
     final root = await getDatabasesPath();
     final source = File(p.join(root, 'eshokfix_mobile_v1.db'));
@@ -355,6 +370,7 @@ class LocalStore {
   }
 
   Future<void> restoreBackup(String sourcePath) async {
+    requirePermission('settings.manage');
     final source = File(sourcePath);
     if (!await source.exists() || await source.length() < 512) {
       throw ArgumentError('El archivo seleccionado no parece una copia de eShokFix.');
