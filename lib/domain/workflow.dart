@@ -57,3 +57,14 @@ class PurchaseAccounting {
     return 'PARCIAL';
   }
 }
+
+class OrderPartAccounting {
+  static double lineTotal(double quantity, double unitPrice) =>
+      quantity * unitPrice;
+
+  static double orderTotal({
+    required double labor,
+    required double parts,
+    required double discount,
+  }) => (labor + parts - discount).clamp(0.0, double.infinity).toDouble();
+}
