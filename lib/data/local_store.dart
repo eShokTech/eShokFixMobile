@@ -158,15 +158,32 @@ class LocalStore {
   LocalStore._(this.db);
   final Database db;
   AuthUser? _authenticatedUser;
+  DateTime? _lastActivityAt;
   AuthUser? get authenticatedUser => _authenticatedUser;
 
   void setAuthenticatedUser(AuthUser? user) {
     _authenticatedUser = user;
+    _lastActivityAt = user == null ? null : DateTime.now();
+  }
+
+  bool registerActivity() {
+    final last = _lastActivityAt;
+    if (_authenticatedUser == null || last == null ||
+        DateTime.now().difference(last) > AuthService.idleLifetime) {
+      _authenticatedUser = null;
+      _lastActivityAt = null;
+      return false;
+    }
+    _lastActivityAt = DateTime.now();
+    return true;
   }
 
   void requirePermission(String permission) {
     final user = _authenticatedUser;
-    if (user == null || !AuthService.can(user.role, permission)) {
+    final last = _lastActivityAt;
+    if (user == null || last == null ||
+        DateTime.now().difference(last) > AuthService.idleLifetime ||
+        !AuthService.can(user.role, permission)) {
       throw StateError('No tienes permiso para realizar esta operación.');
     }
   }
