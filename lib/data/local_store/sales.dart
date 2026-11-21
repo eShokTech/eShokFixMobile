@@ -13,8 +13,14 @@ extension LocalStoreSalesOperations on LocalStore {
   Future<void> createSale({int? itemId, required String description, required double quantity, required double unitPrice, required String paymentMethod, double discount = 0, String notes = ''}) async {
     requirePermission('sales.manage');
     requirePermission('purchases.view');
+    requirePermission('purchases.view');
     requirePermission('sales.view');
     requirePermission('sales.view');
+    requirePermission('sales.view');
+
+
+
+
     await createSaleCart(
       items: [{
         'item_id': itemId, 'description': description,
@@ -38,6 +44,8 @@ extension LocalStoreSalesOperations on LocalStore {
   }) async {
     requirePermission('sales.manage');
     requirePermission('sales.view');
+
+
     if (items.isEmpty) throw ArgumentError('Agrega al menos un producto o servicio.');
     if (!discount.isFinite || discount < 0) throw ArgumentError('El descuento debe ser un importe válido no negativo.');
 
@@ -173,6 +181,7 @@ extension LocalStoreSalesOperations on LocalStore {
     required String reason,
   }) async {
     requirePermission('sales.manage');
+
     if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad a devolver debe ser mayor a cero.');
     if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de la devolución.');
     final method = refundMethod.trim().toUpperCase();
@@ -262,6 +271,7 @@ extension LocalStoreSalesOperations on LocalStore {
     required String refundMethod, required String reason,
   }) async {
     requirePermission('sales.manage');
+
     if (reason.trim().isEmpty) throw ArgumentError('Indica el motivo de cancelación.');
     final method = refundMethod.trim().toUpperCase();
     if (!FinancialRules.paymentMethods.contains(method)) throw ArgumentError('Selecciona un medio de reembolso válido.');
