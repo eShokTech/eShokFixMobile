@@ -160,6 +160,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     if (depositAmount > computedTotal) {
       throw ArgumentError('El anticipo no puede superar el total del servicio.');
     }
+    if (depositAmount > 0) requirePermission('orders.pay');
     final depositTender = FinancialRules.normalizePayments(
       total: depositAmount,
       fallbackMethod: depositMethod,
