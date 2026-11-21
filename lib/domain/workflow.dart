@@ -40,3 +40,20 @@ class OrderWorkflow {
 
   static String label(String status) => labels[status] ?? status;
 }
+
+class PurchaseAccounting {
+  static double lineTotal(double quantity, double unitCost) =>
+      quantity * unitCost;
+
+  static double total(double subtotal, double discount) =>
+      (subtotal - discount).clamp(0.0, double.infinity).toDouble();
+
+  static double balance(double total, double paid) =>
+      (total - paid).clamp(0.0, double.infinity).toDouble();
+
+  static String paymentStatus(double total, double paid) {
+    if (paid <= 0) return 'PENDIENTE';
+    if (balance(total, paid) <= 0.01) return 'PAGADA';
+    return 'PARCIAL';
+  }
+}
