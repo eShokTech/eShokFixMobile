@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:printing/printing.dart';
 import '../data/local_store.dart';
+import '../data/auth_service.dart';
 import '../data/database_backup_service.dart';
 import 'package:flutter/services.dart';
 import '../domain/workflow.dart';
@@ -38,15 +39,44 @@ String _day(Object? v) {
 }
 
 class EShokFixShell extends StatefulWidget {
-  const EShokFixShell({super.key, required this.store});
+  const EShokFixShell({super.key, required this.store, required this.authUser, required this.onLogout});
   final LocalStore store;
+  final AuthUser authUser;
+  final VoidCallback onLogout;
   @override
   State<EShokFixShell> createState() => _EShokFixShellState();
 }
 
 class _EShokFixShellState extends State<EShokFixShell> {
   String _view = 'inicio';
-  void _open(String view) => setState(() => _view = view);
+  bool _canOpen(String view) {
+    final permission = switch (view) {
+      'inicio' => 'dashboard.view',
+      'ordenes' => 'orders.view',
+      'clientes' => 'clients.view',
+      'inventario' => 'inventory.view',
+      'pos' => 'sales.view',
+      'caja' => 'cash.view',
+      'compras' => 'purchases.view',
+      'garantias' => 'warranties.view',
+      'reportes' => 'reports.view',
+      'usuarios' => 'users.manage',
+      'configuracion' => 'settings.view',
+      'whatsapp' || 'licencias' => 'users.manage',
+      _ => 'dashboard.view',
+    };
+    return AuthService.can(authUser.role, permission);
+  }
+
+  void _open(String view) {
+    if (!_canOpen(view)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tu rol no tiene permiso para abrir este módulo.')),
+      );
+      return;
+    }
+    setState(() => _view = view);
+  }
   int get _selectedNav => switch (_view) {
     'inicio' => 0, 'ordenes' => 1, 'clientes' => 2, 'inventario' => 3, _ => 4,
   };
@@ -89,6 +119,11 @@ class _EShokFixShellState extends State<EShokFixShell> {
             onPressed: () => _showInfo(context, 'Modo local', 'Los datos y operaciones de esta beta se guardan en el teléfono. La sincronización con PC y el licenciamiento remoto todavía no están conectados.'),
             icon: const Icon(Icons.cloud_off_outlined, color: eShokPurple),
           ),
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: Center(child: Text(authUser.displayName, style: const TextStyle(fontSize: 10, color: Color(0xFF746A80)))),
+          ),
+          IconButton(tooltip: 'Cerrar sesión', onPressed: onLogout, icon: const Icon(Icons.logout, color: eShokPurple)),
           const SizedBox(width: 6),
         ],
       ),
@@ -298,21 +333,22 @@ class EmptyState extends StatelessWidget {
 }
 
 class MorePage extends StatelessWidget {
-  const MorePage({super.key, required this.open});
+  const MorePage({super.key, required this.open, required this.role});
   final ValueChanged<String> open;
+  final String role;
   @override
   Widget build(BuildContext context) => PageFrame(child: ListView(children: [
     const SectionHeading('Más herramientas', subtitle: 'Módulos administrativos y operación comercial'), const SizedBox(height: 14),
     GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 1.28, mainAxisSpacing: 10, crossAxisSpacing: 10, children: [
-      _moduleTile(context, 'Punto de venta', 'Ventas y tickets', Icons.point_of_sale_outlined, 'pos', open),
-      _moduleTile(context, 'Compras y proveedores', 'Entradas y cuentas por pagar', Icons.local_shipping_outlined, 'compras', open),
-      _moduleTile(context, 'Caja y cortes', 'Entradas y salidas', Icons.account_balance_wallet_outlined, 'caja', open),
-      _moduleTile(context, 'Garantías', 'Vigencia y expedientes', Icons.verified_user_outlined, 'garantias', open),
-      _moduleTile(context, 'Reportes', 'Resumen del negocio', Icons.query_stats_outlined, 'reportes', open),
-      _moduleTile(context, 'Usuarios', 'Roles y acceso', Icons.manage_accounts_outlined, 'usuarios', open),
-      _moduleTile(context, 'Configuración', 'Taller y reglas', Icons.tune_outlined, 'configuracion', open),
-      _moduleTile(context, 'WhatsApp', 'Eventos automáticos', Icons.chat_bubble_outline, 'whatsapp', open),
-      _moduleTile(context, 'Licencias', 'Servidor de validación', Icons.vpn_key_outlined, 'licencias', open),
+      if (AuthService.can(role, 'sales.view')) _moduleTile(context, 'Punto de venta', 'Ventas y tickets', Icons.point_of_sale_outlined, 'pos', open),
+      if (AuthService.can(role, 'purchases.view')) _moduleTile(context, 'Compras y proveedores', 'Entradas y cuentas por pagar', Icons.local_shipping_outlined, 'compras', open),
+      if (AuthService.can(role, 'cash.view')) _moduleTile(context, 'Caja y cortes', 'Entradas y salidas', Icons.account_balance_wallet_outlined, 'caja', open),
+      if (AuthService.can(role, 'warranties.view')) _moduleTile(context, 'Garantías', 'Vigencia y expedientes', Icons.verified_user_outlined, 'garantias', open),
+      if (AuthService.can(role, 'reports.view')) _moduleTile(context, 'Reportes', 'Resumen del negocio', Icons.query_stats_outlined, 'reportes', open),
+      if (AuthService.can(role, 'users.manage')) _moduleTile(context, 'Usuarios', 'Roles y acceso', Icons.manage_accounts_outlined, 'usuarios', open),
+      if (AuthService.can(role, 'settings.view')) _moduleTile(context, 'Configuración', 'Taller y reglas', Icons.tune_outlined, 'configuracion', open),
+      if (AuthService.can(role, 'users.manage')) _moduleTile(context, 'WhatsApp', 'Eventos automáticos', Icons.chat_bubble_outline, 'whatsapp', open),
+      if (AuthService.can(role, 'users.manage')) _moduleTile(context, 'Licencias', 'Servidor de validación', Icons.vpn_key_outlined, 'licencias', open),
     ]),
     const SizedBox(height: 15),
     GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Estado de esta beta', style: TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 9), _statusLine(Icons.check_circle, 'Datos locales SQLite', 'Activo'), _statusLine(Icons.check_circle, 'Clientes, órdenes e inventario', 'Operativos'), _statusLine(Icons.check_circle, 'POS, caja, garantías y reportes', 'Operación local'), _statusLine(Icons.pending_outlined, 'Sincronización con PC', 'Pendiente'), _statusLine(Icons.pending_outlined, 'Servidor de licencias', 'Pendiente'), _statusLine(Icons.pending_outlined, 'WhatsApp Cloud API', 'Pendiente de configuración')])),
