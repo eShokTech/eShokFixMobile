@@ -53,7 +53,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
   }
 
   Future<void> deleteClient(int id) async {
-    requirePermission('clients.manage');
+    requirePermission('clients.delete');
     
 
     await db.transaction((tx) async {
@@ -487,7 +487,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     required String refundMethod,
     required String reason,
   }) async {
-    requirePermission('orders.manage');
+    requirePermission('orders.cancel');
     
     
     
