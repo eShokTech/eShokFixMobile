@@ -126,7 +126,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     await db.insert('settings', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
   }
   Future<List<Map<String, Object?>>> whatsappEvents() {
-    requirePermission('users.manage'); return db.rawQuery('''SELECT w.*, o.folio, c.name client_name FROM whatsapp_events w JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id ORDER BY w.id DESC'''); }
+    requirePermission('settings.read'); return db.rawQuery('''SELECT w.*, o.folio, c.name client_name FROM whatsapp_events w JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id ORDER BY w.id DESC'''); }
   Future<Map<String, int>> demoDataCounts() async {
     requirePermission('settings.manage');
     
