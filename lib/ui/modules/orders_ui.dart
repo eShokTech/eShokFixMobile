@@ -50,6 +50,7 @@ class NewOrderDialog extends StatefulWidget {
   State<NewOrderDialog> createState() => _NewOrderDialogState();
 }
 class _NewOrderDialogState extends State<NewOrderDialog> {
+  bool _can(String permission) => AuthService.can(widget.store.authenticatedUser?.role ?? '', permission);
   final _form = GlobalKey<FormState>();
   final _brand = TextEditingController(text: '');
   final _model = TextEditingController();
@@ -109,8 +110,8 @@ class _NewOrderDialogState extends State<NewOrderDialog> {
       const SizedBox(height: 9), _field(_accessories, 'Accesorios recibidos'),
       const SizedBox(height: 9), Row(children: [Expanded(child: _field(_imei, 'IMEI')), const SizedBox(width: 8), Expanded(child: _field(_serial, 'Serie'))]),
       const SizedBox(height: 9), Row(children: [Expanded(child: _field(_labor, 'Mano de obra', number: true)), const SizedBox(width: 8), Expanded(child: _field(_parts, 'Refacciones manuales (sin inventario)', number: true))]),
-      const SizedBox(height: 9), Row(children: [Expanded(child: _field(_discount, 'Descuento', number: true)), const SizedBox(width: 8), Expanded(child: _field(_deposit, 'Anticipo', number: true))]),
-      const SizedBox(height: 8), DropdownButtonFormField<String>(initialValue: _depositMethod, decoration: const InputDecoration(labelText: 'Medio del anticipo'), items: const ['EFECTIVO','TRANSFERENCIA','TARJETA','OTRO'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => _depositMethod = v ?? _depositMethod)),
+      const SizedBox(height: 9), Row(children: [Expanded(child: _field(_discount, 'Descuento', number: true)), if (_can('orders.pay')) const SizedBox(width: 8), if (_can('orders.pay')) Expanded(child: _field(_deposit, 'Anticipo', number: true))]),
+      if (_can('orders.pay')) ...[const SizedBox(height: 8), DropdownButtonFormField<String>(initialValue: _depositMethod, decoration: const InputDecoration(labelText: 'Medio del anticipo'), items: const ['EFECTIVO','TRANSFERENCIA','TARJETA','OTRO'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => _depositMethod = v ?? _depositMethod))],
       const SizedBox(height: 9), Row(children: [Expanded(child: _field(_technician, 'Técnico')), const SizedBox(width: 8), SizedBox(width: 92, child: _field(_warranty, 'Garantía días', number: true))]),
       const SizedBox(height: 9), _field(_notes, 'Notas internas', lines: 2),
       if (_clientId != null) Align(alignment: Alignment.centerLeft, child: Text('El registro genera folio, historial y evento de recepción.', style: TextStyle(fontSize: 10, color: Colors.grey.shade600))),
