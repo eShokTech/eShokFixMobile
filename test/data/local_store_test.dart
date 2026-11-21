@@ -35,6 +35,13 @@ void main() {
       cost: 40,
       price: 100,
     );
+    await store.saveInventoryItem(
+      id: itemId, name: 'Pantalla de prueba', sku: 'TEST-DISPLAY',
+      stock: 999, cost: 40, price: 105,
+    );
+    final preSaleInventory = await store.inventory(query: 'Pantalla de prueba');
+    expect(preSaleInventory.single['stock'], 5);
+
     final saleId = await store.createSaleCart(
       items: [{
         'item_id': itemId, 'description': 'Pantalla de prueba',
@@ -87,6 +94,7 @@ void main() {
     final purchaseId = await store.createPurchase(
       supplierId: supplierId,
       items: [{'item_id': itemId, 'quantity': 5, 'unit_cost': 50}],
+      discount: 50,
       receiveImmediately: false,
       paid: 100,
       paymentMethod: 'TRANSFERENCIA',
@@ -111,15 +119,31 @@ void main() {
     purchase = (await store.purchases()).singleWhere((row) => row['id'] == purchaseId);
     expect(purchase['status'], 'RECEIVED');
 
+    await expectLater(
+      store.receivePurchaseItem(purchaseId, purchaseItemId, 1),
+      throwsA(isA<StateError>()),
+    );
     await store.returnPurchaseItem(
       purchaseId: purchaseId, purchaseItemId: purchaseItemId,
-      quantity: 1, refundMethod: 'EFECTIVO',
-      reason: 'Prueba de devolución al proveedor',
+      quantity: 1, refundMethod: 'EFECTIVO', reason: 'Primera devolución',
     );
     inventory = await store.inventory(query: 'Batería de prueba');
     expect(inventory.single['stock'], 4);
+    var purchaseAfterReturn = (await store.purchases()).singleWhere((row) => row['id'] == purchaseId);
+    expect((purchaseAfterReturn['total'] as num).toDouble(), 160);
+    await store.returnPurchaseItem(
+      purchaseId: purchaseId, purchaseItemId: purchaseItemId,
+      quantity: 1, refundMethod: 'EFECTIVO', reason: 'Segunda devolución',
+    );
+    inventory = await store.inventory(query: 'Batería de prueba');
+    expect(inventory.single['stock'], 3);
     final returnedLines = await store.purchaseItems(purchaseId);
-    expect((returnedLines.single['returned_quantity'] as num).toDouble(), 1);
+    expect((returnedLines.single['returned_quantity'] as num).toDouble(), 2);
+    purchaseAfterReturn = (await store.purchases()).singleWhere((row) => row['id'] == purchaseId);
+    expect((purchaseAfterReturn['total'] as num).toDouble(), 120);
+    final returns = await store.purchaseReturns(purchaseId);
+    expect(returns, hasLength(2));
+    expect(returns.fold<double>(0, (sum, row) => sum + (row['amount'] as num).toDouble()), 80);
   });
 
   test('cancelled service order refunds collected money and rejects future payments', () async {

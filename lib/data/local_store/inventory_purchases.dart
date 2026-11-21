@@ -298,7 +298,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
       await tx.update('purchases', {
         'paid': newPaid,
         'payment_status': PurchaseAccounting.paymentStatus(total, newPaid),
-        'payment_method': method,
+        'payment_method': normalizedMethod,
       }, where: 'id=?', whereArgs: [purchaseId]);
       await tx.insert('purchase_payments', {
         'purchase_id': purchaseId, 'method': normalizedMethod, 'amount': normalizedAmount,

@@ -15,11 +15,15 @@ class FinancialRules {
   }) {
     final totalCents = cents(total);
     if (totalCents < 0) throw ArgumentError('El total no puede ser negativo.');
+    final normalizedFallback = fallbackMethod.trim().toUpperCase();
+    if (!paymentMethods.contains(normalizedFallback)) {
+      throw ArgumentError('Selecciona un medio de pago válido.');
+    }
     if (totalCents == 0) {
       if (payments != null && payments.isNotEmpty) throw ArgumentError('No se pueden registrar pagos para un importe de cero.');
       return [];
     }
-    final source = payments ?? [{'method': fallbackMethod, 'amount': total}];
+    final source = payments ?? [{'method': normalizedFallback, 'amount': total}];
     if (source.isEmpty) throw ArgumentError('Registra al menos un medio de pago.');
     final normalized = <Map<String, Object?>>[];
     var sum = 0;

@@ -32,20 +32,22 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
   }) async {
     if (!amount.isFinite || amount <= 0) throw ArgumentError('El importe debe ser mayor a cero y válido.');
     if (concept.trim().isEmpty) throw ArgumentError('El concepto es obligatorio.');
-    if (!FinancialRules.paymentMethods.contains(paymentMethod.trim().toUpperCase())) throw ArgumentError('Medio de pago no válido.');
+    final normalizedMethod = paymentMethod.trim().toUpperCase();
+    if (!FinancialRules.paymentMethods.contains(normalizedMethod)) throw ArgumentError('Medio de pago no válido.');
+    final normalizedAmount = FinancialRules.money(amount);
     final now = _now();
     final id = await db.insert('cash_movements', {
       'movement_type': income ? 'IN' : 'OUT',
-      'amount': amount,
+      'amount': normalizedAmount,
       'concept': concept.trim(),
       'reference': reference.trim(),
-      'payment_method': paymentMethod,
+      'payment_method': normalizedMethod,
       'created_at': now,
     });
-    await _audit('cash_movement', id, income ? 'IN' : 'OUT', '$amount · ${concept.trim()} · $paymentMethod');
+    await _audit('cash_movement', id, income ? 'IN' : 'OUT', '$normalizedAmount · ${concept.trim()} · $normalizedMethod');
     await _outbox('cash_movement', id, 'CREATE', {
-      'amount': amount, 'type': income ? 'IN' : 'OUT',
-      'concept': concept.trim(), 'payment_method': paymentMethod,
+      'amount': normalizedAmount, 'type': income ? 'IN' : 'OUT',
+      'concept': concept.trim(), 'payment_method': normalizedMethod,
     });
   }
 
