@@ -903,10 +903,11 @@ class _SalesPageState extends State<SalesPage> {
   }
 
   Future<void> _openSale(Map<String, Object?> sale) async {
-    await showDialog<void>(
+    final updated = await showDialog<bool>(
       context: context,
       builder: (_) => SaleDetailDialog(store: widget.store, sale: sale),
     );
+    if (updated == true && mounted) setState(_refresh);
   }
 
   @override
@@ -1011,6 +1012,9 @@ class _SaleDialogState extends State<SaleDialog> {
   String method = 'EFECTIVO';
   bool loading = true;
   bool saving = false;
+  bool splitPayment = false;
+  final splitAmount = TextEditingController(text: '0');
+  String secondPaymentMethod = 'TARJETA';
 
   @override
   void initState() {
@@ -1039,6 +1043,7 @@ class _SaleDialogState extends State<SaleDialog> {
     }
     discount.dispose();
     notes.dispose();
+    splitAmount.dispose();
     super.dispose();
   }
 
@@ -1086,6 +1091,23 @@ class _SaleDialogState extends State<SaleDialog> {
       ));
       return;
     }
+    final discountValue = double.tryParse(discount.text.trim().replaceAll(',', '.')) ?? 0;
+    final totalToCollect = PurchaseAccounting.total(_subtotal, discountValue);
+    List<Map<String, Object?>>? breakdown;
+    if (splitPayment) {
+      final second = _value(splitAmount);
+      final first = FinancialRules.money(totalToCollect - second);
+      if (second <= 0 || first <= 0) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Ambos medios de pago deben tener un importe mayor a cero y sumar el total.'),
+        ));
+        return;
+      }
+      breakdown = [
+        {'method': method, 'amount': first},
+        {'method': secondPaymentMethod, 'amount': second},
+      ];
+    }
     setState(() => saving = true);
     try {
       await widget.store.createSaleCart(
@@ -1097,7 +1119,8 @@ class _SaleDialogState extends State<SaleDialog> {
           'unit_price': _value(line.unitPrice),
         }).toList(),
         paymentMethod: method,
-        discount: double.tryParse(discount.text.trim().replaceAll(',', '.')) ?? 0,
+        paymentBreakdown: breakdown,
+        discount: discountValue,
         notes: notes.text,
       );
       if (mounted) Navigator.pop(context, true);
@@ -1184,13 +1207,42 @@ class _SaleDialogState extends State<SaleDialog> {
         const Divider(),
         _field(discount, 'Descuento global', number: true, onChanged: (_) => setState(() {})),
         const SizedBox(height: 8),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Dividir el pago', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          subtitle: const Text('Permite cobrar una parte en cada medio', style: TextStyle(fontSize: 10)),
+          value: splitPayment,
+          onChanged: (value) => setState(() {
+            splitPayment = value;
+            if (value) splitAmount.text = (total / 2).toStringAsFixed(2);
+          }),
+        ),
         DropdownButtonFormField<String>(
           initialValue: method,
-          decoration: const InputDecoration(labelText: 'Método de pago'),
+          decoration: const InputDecoration(labelText: 'Primer medio de pago'),
           items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
             .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
           onChanged: (value) => setState(() => method = value ?? method),
         ),
+        if (splitPayment) ...[
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: _field(splitAmount, 'Importe segundo pago', number: true)),
+            const SizedBox(width: 8),
+            Expanded(child: DropdownButtonFormField<String>(
+              initialValue: secondPaymentMethod,
+              decoration: const InputDecoration(labelText: 'Segundo medio'),
+              items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+                .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+              onChanged: (value) => setState(() => secondPaymentMethod = value ?? secondPaymentMethod),
+            )),
+          ]),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text('Primer pago: ${_money(total - (double.tryParse(splitAmount.text.replaceAll(',', '.')) ?? 0))}',
+              style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+          ),
+        ],
         const SizedBox(height: 8),
         _field(notes, 'Notas / referencia'),
         const SizedBox(height: 12),
@@ -1222,11 +1274,109 @@ class SaleDetailDialog extends StatefulWidget {
 
 class _SaleDetailDialogState extends State<SaleDetailDialog> {
   late Future<List<Map<String, Object?>>> _items;
+  bool saving = false;
 
   @override
   void initState() {
     super.initState();
     _items = widget.store.saleItems(widget.sale['id'] as int);
+  }
+
+  void _refreshItems() => _items = widget.store.saleItems(widget.sale['id'] as int);
+
+  Future<void> _returnLine(Map<String, Object?> line) async {
+    final remaining = FinancialRules.remainingQuantity(
+      _num(line['quantity']), _num(line['returned_quantity']),
+    );
+    if (remaining <= 0) return;
+    final qty = TextEditingController(text: remaining.toStringAsFixed(2));
+    final reason = TextEditingController();
+    String method = 'EFECTIVO';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialog) => AlertDialog(
+        title: const Text('Devolver partida'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_str(line['description'])),
+          const SizedBox(height: 8),
+          TextField(controller: qty, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(labelText: 'Cantidad por devolver (máximo ${remaining.toStringAsFixed(2)})')),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: method,
+            decoration: const InputDecoration(labelText: 'Medio de reembolso'),
+            items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+              .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+            onChanged: (v) => setDialog(() => method = v ?? method),
+          ),
+          const SizedBox(height: 8),
+          TextField(controller: reason, decoration: const InputDecoration(labelText: 'Motivo')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Registrar devolución')),
+        ],
+      )),
+    );
+    if (confirmed != true) return;
+    try {
+      await widget.store.returnSaleItem(
+        saleId: widget.sale['id'] as int,
+        saleItemId: line['id'] as int,
+        quantity: double.parse(qty.text.trim().replaceAll(',', '.')),
+        refundMethod: method,
+        reason: reason.text,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      qty.dispose();
+      reason.dispose();
+    }
+  }
+
+  Future<void> _cancelSale() async {
+    final reason = TextEditingController();
+    String method = 'EFECTIVO';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialog) => AlertDialog(
+        title: const Text('Cancelar y reembolsar venta'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Se devolverán las existencias pendientes y se registrará la salida del reembolso en caja. Esta operación no se puede deshacer.'),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: method,
+            decoration: const InputDecoration(labelText: 'Medio de reembolso'),
+            items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+              .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+            onChanged: (v) => setDialog(() => method = v ?? method),
+          ),
+          const SizedBox(height: 8),
+          TextField(controller: reason, maxLines: 2, decoration: const InputDecoration(labelText: 'Motivo obligatorio')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Conservar venta')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB65E69)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancelar venta'),
+          ),
+        ],
+      )),
+    );
+    if (confirmed != true) { reason.dispose(); return; }
+    try {
+      await widget.store.cancelSale(
+        widget.sale['id'] as int, refundMethod: method, reason: reason.text,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      reason.dispose();
+    }
   }
 
   Future<void> _printTicket(List<Map<String, Object?>> items) async {
@@ -1289,14 +1439,24 @@ class _SaleDetailDialogState extends State<SaleDetailDialog> {
             dense: true,
             contentPadding: EdgeInsets.zero,
             title: Text(_str(item['description'])),
-            subtitle: Text('${_num(item['quantity'])} × ${_money(item['unit_price'])}'),
-            trailing: Text(_money(item['line_total']), style: const TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text('${_num(item['quantity'])} × ${_money(item['unit_price'])} · Devuelto ${_num(item['returned_quantity'])}'),
+            trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(_money(item['line_total']), style: const TextStyle(fontWeight: FontWeight.w800)),
+              IconButton(
+                tooltip: 'Devolver partida',
+                onPressed: widget.sale['status'] == 'VOID' || _num(item['returned_quantity']) >= _num(item['quantity'])
+                  ? null : () => _returnLine(item),
+                icon: const Icon(Icons.assignment_return_outlined, color: eShokPurple),
+              ),
+            ]),
           )),
           const Divider(),
           _reportLine('Subtotal', _money(widget.sale['subtotal'])),
           _reportLine('Descuento', _money(widget.sale['discount'])),
           _reportLine('Total', _money(widget.sale['total'])),
           _reportLine('Método de pago', _str(widget.sale['payment_method'])),
+          _reportLine('Estado', _str(widget.sale['status'], 'COMPLETED')),
+          _reportLine('Reembolsado', _money(widget.sale['refunded_total'])),
           const SizedBox(height: 8),
           Align(
             alignment: Alignment.centerRight,
@@ -1310,7 +1470,12 @@ class _SaleDetailDialogState extends State<SaleDetailDialog> {
       },
     )),
     actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+      if (widget.sale['status'] != 'VOID')
+        TextButton(
+          onPressed: saving ? null : _cancelSale,
+          child: const Text('Cancelar y reembolsar'),
+        ),
+      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cerrar')),
     ],
   );
 }
@@ -2048,6 +2213,58 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
   bool saving = false;
   late Future<List<Map<String, Object?>>> _items;
 
+  Future<void> _returnLine(Map<String, Object?> line) async {
+    final remaining = FinancialRules.remainingQuantity(
+      _num(line['quantity']), _num(line['returned_quantity']),
+    );
+    if (remaining <= 0) return;
+    final qty = TextEditingController(text: remaining.toStringAsFixed(2));
+    final reason = TextEditingController();
+    String refundMethod = 'EFECTIVO';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setDialog) => AlertDialog(
+        title: const Text('Devolver al proveedor'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_str(line['description'])),
+          const SizedBox(height: 8),
+          TextField(controller: qty, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(labelText: 'Cantidad (máximo ${remaining.toStringAsFixed(2)})')),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: refundMethod,
+            decoration: const InputDecoration(labelText: 'Medio de reembolso (si hay saldo a favor)'),
+            items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+              .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+            onChanged: (v) => setDialog(() => refundMethod = v ?? refundMethod),
+          ),
+          const SizedBox(height: 8),
+          TextField(controller: reason, decoration: const InputDecoration(labelText: 'Motivo')),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Registrar devolución')),
+        ],
+      )),
+    );
+    if (confirmed != true) { qty.dispose(); reason.dispose(); return; }
+    try {
+      await widget.store.returnPurchaseItem(
+        purchaseId: widget.purchase['id'] as int,
+        purchaseItemId: line['id'] as int,
+        quantity: double.parse(qty.text.trim().replaceAll(',', '.')),
+        refundMethod: refundMethod,
+        reason: reason.text,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      qty.dispose();
+      reason.dispose();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2080,7 +2297,15 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
               contentPadding: EdgeInsets.zero,
               title: Text(_str(line['description'])),
               subtitle: Text('${_num(line['quantity'])} × ${_money(line['unit_cost'])}'),
-              trailing: Text(_money(line['line_total']), style: const TextStyle(fontWeight: FontWeight.w800)),
+              trailing: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(_money(line['line_total']), style: const TextStyle(fontWeight: FontWeight.w800)),
+                IconButton(
+                  tooltip: 'Devolver al proveedor',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _num(line['returned_quantity']) >= _num(line['quantity']) ? null : () => _returnLine(line),
+                  icon: const Icon(Icons.assignment_return_outlined, color: eShokPurple),
+                ),
+              ]),
             )).toList());
           },
         ),
