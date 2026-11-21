@@ -632,7 +632,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         Row(children: [
           const Expanded(child: SectionHeading('Refacciones y materiales')),
           FilledButton.tonalIcon(
-            onPressed: status == 'ENTREGADO' || status == 'CANCELADO' ? null : _addPart,
+            onPressed: status == 'ENTREGADO' || status == 'CANCELADO' || _str(o['authorization_status'], 'PENDING') != 'APPROVED' ? null : _addPart,
             icon: const Icon(Icons.add, size: 17),
             label: const Text('Agregar'),
           ),
