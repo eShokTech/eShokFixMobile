@@ -78,7 +78,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
     setState(() => _view = view);
   }
   int get _selectedNav => switch (_view) {
-    'inicio' => 0, 'ordenes' => 1, 'clientes' => 2, 'inventario' => 3, _ => 4,
+    'inicio' => 0, 'ordenes' => 1, 'clientes' => 2, 'caja' => 3, _ => 4,
   };
   String get _title => switch (_view) {
     'inicio' => 'Inicio', 'ordenes' => 'Órdenes de servicio', 'clientes' => 'Clientes',
@@ -97,7 +97,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'clientes' => ClientsPage(store: widget.store),
       'inventario' => InventoryPage(store: widget.store),
       'pos' => SalesPage(store: widget.store),
-      'caja' => CashPage(store: widget.store),
+      'caja' => CashPage(store: widget.store, open: _open),
       'garantias' => WarrantiesPage(store: widget.store),
       'reportes' => ReportsPage(store: widget.store),
       'usuarios' => UsersPage(store: widget.store, currentUser: widget.authUser),
@@ -131,13 +131,13 @@ class _EShokFixShellState extends State<EShokFixShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedNav,
         onDestinationSelected: (index) => _open(switch (index) {
-          0 => 'inicio', 1 => 'ordenes', 2 => 'clientes', 3 => 'inventario', _ => 'mas',
+          0 => 'inicio', 1 => 'ordenes', 2 => 'clientes', 3 => 'caja', _ => 'mas',
         }),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.space_dashboard_outlined), selectedIcon: Icon(Icons.space_dashboard), label: 'Inicio'),
           NavigationDestination(icon: Icon(Icons.assignment_outlined), selectedIcon: Icon(Icons.assignment), label: 'Órdenes'),
           NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Clientes'),
-          NavigationDestination(icon: Icon(Icons.inventory_2_outlined), selectedIcon: Icon(Icons.inventory_2), label: 'Inventario'),
+          NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), selectedIcon: Icon(Icons.account_balance_wallet), label: 'Caja'),
           NavigationDestination(icon: Icon(Icons.apps_outlined), selectedIcon: Icon(Icons.apps), label: 'Más'),
         ],
       ),
@@ -336,25 +336,63 @@ class MorePage extends StatelessWidget {
   const MorePage({super.key, required this.open, required this.role});
   final ValueChanged<String> open;
   final String role;
+
   @override
   Widget build(BuildContext context) => PageFrame(child: ListView(children: [
-    const SectionHeading('Más herramientas', subtitle: 'Módulos administrativos y operación comercial'), const SizedBox(height: 14),
-    GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 1.28, mainAxisSpacing: 10, crossAxisSpacing: 10, children: [
-      if (AuthService.can(role, 'sales.view')) _moduleTile(context, 'Punto de venta', 'Ventas y tickets', Icons.point_of_sale_outlined, 'pos', open),
-      if (AuthService.can(role, 'purchases.view')) _moduleTile(context, 'Compras y proveedores', 'Entradas y cuentas por pagar', Icons.local_shipping_outlined, 'compras', open),
-      if (AuthService.can(role, 'cash.view')) _moduleTile(context, 'Caja y cortes', 'Entradas y salidas', Icons.account_balance_wallet_outlined, 'caja', open),
-      if (AuthService.can(role, 'warranties.view')) _moduleTile(context, 'Garantías', 'Vigencia y expedientes', Icons.verified_user_outlined, 'garantias', open),
-      if (AuthService.can(role, 'reports.view')) _moduleTile(context, 'Reportes', 'Resumen del negocio', Icons.query_stats_outlined, 'reportes', open),
-      if (AuthService.can(role, 'users.manage')) _moduleTile(context, 'Usuarios', 'Roles y acceso', Icons.manage_accounts_outlined, 'usuarios', open),
-      if (AuthService.can(role, 'settings.view')) _moduleTile(context, 'Configuración', 'Taller y reglas', Icons.tune_outlined, 'configuracion', open),
-      if (AuthService.can(role, 'users.manage')) _moduleTile(context, 'WhatsApp', 'Eventos automáticos', Icons.chat_bubble_outline, 'whatsapp', open),
-      if (AuthService.can(role, 'users.manage')) _moduleTile(context, 'Licencias', 'Servidor de validación', Icons.vpn_key_outlined, 'licencias', open),
-    ]),
+    const SectionHeading('Más módulos', subtitle: 'Herramientas de uso ocasional y administración'),
+    const SizedBox(height: 14),
+    GridView.count(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      crossAxisCount: 2,
+      childAspectRatio: 1.28,
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+      children: [
+        if (AuthService.can(role, 'inventory.view'))
+          _moduleTile(context, 'Inventario', 'Productos y existencias', Icons.inventory_2_outlined, 'inventario', open),
+        if (AuthService.can(role, 'purchases.view'))
+          _moduleTile(context, 'Compras y proveedores', 'Entradas y cuentas por pagar', Icons.local_shipping_outlined, 'compras', open),
+        if (AuthService.can(role, 'warranties.view'))
+          _moduleTile(context, 'Garantías', 'Vigencia y expedientes', Icons.verified_user_outlined, 'garantias', open),
+        if (AuthService.can(role, 'reports.view'))
+          _moduleTile(context, 'Reportes', 'Resumen del negocio', Icons.query_stats_outlined, 'reportes', open),
+        if (AuthService.can(role, 'settings.view'))
+          _moduleTile(context, 'Configuración', 'Taller, usuarios y sistema', Icons.tune_outlined, 'configuracion', open),
+      ],
+    ),
     const SizedBox(height: 15),
-    GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Estado de esta beta', style: TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 9), _statusLine(Icons.check_circle, 'Datos locales SQLite', 'Activo'), _statusLine(Icons.check_circle, 'Clientes, órdenes e inventario', 'Operativos'), _statusLine(Icons.check_circle, 'POS, caja, garantías y reportes', 'Operación local'), _statusLine(Icons.pending_outlined, 'Servidor propio de sincronización', 'Pendiente'), _statusLine(Icons.pending_outlined, 'Servidor de licencias', 'Pendiente'), _statusLine(Icons.pending_outlined, 'WhatsApp Cloud API', 'Pendiente de configuración')])),
+    GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Estado de esta beta', style: TextStyle(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 9),
+      _statusLine(Icons.check_circle, 'Datos locales SQLite', 'Activo'),
+      _statusLine(Icons.check_circle, 'Clientes, órdenes e inventario', 'Operativos'),
+      _statusLine(Icons.check_circle, 'POS, caja, garantías y reportes', 'Operación local'),
+      _statusLine(Icons.pending_outlined, 'Servidor propio de sincronización', 'Pendiente'),
+      _statusLine(Icons.pending_outlined, 'Servidor de licencias', 'Pendiente'),
+      _statusLine(Icons.pending_outlined, 'WhatsApp Cloud API', 'Pendiente de configuración'),
+    ])),
   ]));
 }
-Widget _moduleTile(BuildContext context, String title, String sub, IconData icon, String view, ValueChanged<String> open) => InkWell(onTap: () => open(view), borderRadius: BorderRadius.circular(18), child: GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: 40, height: 40, decoration: BoxDecoration(color: eShokPurpleLight.withValues(alpha: .3), borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: eShokPurple)), const Spacer(), Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)), const SizedBox(height: 3), Text(sub, style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296)))])));
-Widget _statusLine(IconData icon, String title, String state) => Padding(padding: const EdgeInsets.only(top: 8), child: Row(children: [Icon(icon, size: 16, color: icon == Icons.check_circle ? const Color(0xFF29966F) : const Color(0xFFB88945)), const SizedBox(width: 8), Expanded(child: Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))), Text(state, style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296)))]));
+Widget _moduleTile(BuildContext context, String title, String sub, IconData icon, String view, ValueChanged<String> open) => InkWell(
+  onTap: () => open(view),
+  borderRadius: BorderRadius.circular(18),
+  child: GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Container(width: 40, height: 40, decoration: BoxDecoration(color: eShokPurpleLight.withValues(alpha: .3), borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: eShokPurple)),
+    const Spacer(),
+    Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+    const SizedBox(height: 3),
+    Text(sub, style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))),
+  ])),
+);
+Widget _statusLine(IconData icon, String title, String state) => Padding(
+  padding: const EdgeInsets.only(top: 8),
+  child: Row(children: [
+    Icon(icon, size: 16, color: icon == Icons.check_circle ? const Color(0xFF29966F) : const Color(0xFFB88945)),
+    const SizedBox(width: 8),
+    Expanded(child: Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
+    Text(state, style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))),
+  ]),
+);
 
 
