@@ -4,6 +4,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
   Future<Map<String, double>> cashSummary() async {
     requirePermission('cash.view');
     
+    
 
     const period = "created_at > COALESCE((SELECT MAX(closed_at) FROM cash_cuts),'0000-01-01')";
     final cashRows = await db.rawQuery('''SELECT
@@ -26,13 +27,14 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     };
   }
 
-  Future<void> addCashMovement({ requirePermission('cash.manage');
+  Future<void> addCashMovement({ 
     required bool income,
     required double amount,
     required String concept,
     String reference = '',
     String paymentMethod = 'EFECTIVO',
   }) async {
+    requirePermission('cash.manage');
     
 
     if (!amount.isFinite || amount <= 0) throw ArgumentError('El importe debe ser mayor a cero y válido.');
@@ -58,6 +60,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<void> closeCashCut(double counted, String notes) async {
     requirePermission('cash.manage');
+    
     
 
     if (!counted.isFinite || counted < 0) throw ArgumentError('El efectivo contado debe ser un importe válido no negativo.');
@@ -88,13 +91,17 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     });
   }
 
-  Future<List<Map<String, Object?>>> cashMovements() { requirePermission('cash.view'); return db.query('cash_movements', orderBy: 'id DESC', limit: 100); }
-  Future<List<Map<String, Object?>>> cashCuts() { requirePermission('cash.view'); return db.query('cash_cuts', orderBy: 'id DESC', limit: 30); }
-  Future<List<Map<String, Object?>>> warranties() { requirePermission('warranties.view'); return db.rawQuery('''SELECT w.*, o.folio, c.name client_name, d.brand, d.model FROM warranties w
+  Future<List<Map<String, Object?>>> cashMovements() { return db.query('cash_movements', orderBy: 'id DESC', limit: 100); }
+    requirePermission('cash.view');
+  Future<List<Map<String, Object?>>> cashCuts() { return db.query('cash_cuts', orderBy: 'id DESC', limit: 30); }
+    requirePermission('cash.view');
+  Future<List<Map<String, Object?>>> warranties() { return db.rawQuery('''SELECT w.*, o.folio, c.name client_name, d.brand, d.model FROM warranties w
+    requirePermission('warranties.view');
     JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id LEFT JOIN devices d ON d.id=o.device_id ORDER BY w.id DESC'''); }
 
   Future<Map<String, double>> reportTotals() async {
     requirePermission('reports.view');
+    
     
     
     
@@ -111,6 +118,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
   Future<String> setting(String key, {String fallback = ''}) async {
     requirePermission('settings.read');
     
+    
 
     final rows = await db.query('settings', columns: ['value'], where: 'key=?', whereArgs: [key], limit: 1);
     return rows.isEmpty ? fallback : rows.first['value'] as String;
@@ -118,14 +126,17 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
   Future<void> saveSetting(String key, String value) async {
     requirePermission('settings.manage');
     
+    
 
     await db.insert('settings', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  Future<List<Map<String, Object?>>> whatsappEvents() { requirePermission('users.manage'); return db.rawQuery('''SELECT w.*, o.folio, c.name client_name FROM whatsapp_events w JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id ORDER BY w.id DESC'''); }
+  Future<List<Map<String, Object?>>> whatsappEvents() { return db.rawQuery('''SELECT w.*, o.folio, c.name client_name FROM whatsapp_events w JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id ORDER BY w.id DESC'''); }
+    requirePermission('users.manage');
 
   Future<Map<String, int>> demoDataCounts() async {
     requirePermission('settings.manage');
+    
     
     
 
@@ -144,6 +155,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<void> removeDemoData() async {
     requirePermission('settings.manage');
+    
     
 
     await db.transaction((tx) async {
