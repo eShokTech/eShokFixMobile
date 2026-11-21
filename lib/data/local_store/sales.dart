@@ -1,15 +1,21 @@
 part of '../local_store.dart';
 
-extension LocalStoreSalesOperations on LocalStore {  Future<List<Map<String, Object?>>> sales() {
-    requirePermission('sales.view'); return db.rawQuery('''SELECT s.*, c.name client_name FROM sales s LEFT JOIN clients c ON c.id=s.client_id ORDER BY s.id DESC LIMIT 100'''); }  Future<List<Map<String, Object?>>> salePayments(int saleId) {
+extension LocalStoreSalesOperations on LocalStore {
+  Future<List<Map<String, Object?>>> sales() {
+    requirePermission('sales.view'); return db.rawQuery('''SELECT s.*, c.name client_name FROM sales s LEFT JOIN clients c ON c.id=s.client_id ORDER BY s.id DESC LIMIT 100'''); }
+  Future<List<Map<String, Object?>>> salePayments(int saleId) {
     requirePermission('sales.view'); return db.query(
-    'sale_payments', where: 'sale_id=?', whereArgs: [saleId], orderBy: 'id'); }  Future<List<Map<String, Object?>>> saleReturns(int saleId) {
+    'sale_payments', where: 'sale_id=?', whereArgs: [saleId], orderBy: 'id'); }
+  Future<List<Map<String, Object?>>> saleReturns(int saleId) {
     requirePermission('sales.view'); return db.query(
-    'sale_returns', where: 'sale_id=?', whereArgs: [saleId], orderBy: 'id DESC'); }  Future<List<Map<String, Object?>>> purchasePayments(int purchaseId) {
+    'sale_returns', where: 'sale_id=?', whereArgs: [saleId], orderBy: 'id DESC'); }
+  Future<List<Map<String, Object?>>> purchasePayments(int purchaseId) {
     requirePermission('purchases.view'); return db.query(
-    'purchase_payments', where: 'purchase_id=?', whereArgs: [purchaseId], orderBy: 'id'); }  Future<List<Map<String, Object?>>> purchaseReturns(int purchaseId) {
+    'purchase_payments', where: 'purchase_id=?', whereArgs: [purchaseId], orderBy: 'id'); }
+  Future<List<Map<String, Object?>>> purchaseReturns(int purchaseId) {
     requirePermission('purchases.view'); return db.query(
-    'purchase_returns', where: 'purchase_id=?', whereArgs: [purchaseId], orderBy: 'id DESC'); }  Future<void> createSale({int? itemId, required String description, required double quantity, required double unitPrice, required String paymentMethod, double discount = 0, String notes = ''}) async {
+    'purchase_returns', where: 'purchase_id=?', whereArgs: [purchaseId], orderBy: 'id DESC'); }
+  Future<void> createSale({int? itemId, required String description, required double quantity, required double unitPrice, required String paymentMethod, double discount = 0, String notes = ''}) async {
     requirePermission('sales.manage');
     
     
