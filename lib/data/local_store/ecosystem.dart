@@ -229,7 +229,7 @@ extension LocalStoreEcosystemOperations on LocalStore {
             severity=excluded.severity, resolved_at=NULL
         ''', [
           'PURCHASE_BALANCE:$id', 'PURCHASE_BALANCE', 'Compra con saldo pendiente',
-          'La compra ${row['folio']} de ${row['supplier_name']} tiene un saldo de \${balance.toStringAsFixed(2)}.',
+          'La compra ${row['folio']} de ${row['supplier_name']} tiene un saldo de \\${balance.toStringAsFixed(2)}.',
           'INFO', 'compras', id, 'purchases.view', now,
         ]);
       }
