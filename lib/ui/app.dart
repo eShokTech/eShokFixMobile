@@ -43,7 +43,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
     'inventario' => 'Inventario', 'mas' => 'Más módulos', 'pos' => 'Punto de venta',
     'caja' => 'Caja y cortes', 'garantias' => 'Garantías', 'reportes' => 'Reportes',
     'usuarios' => 'Usuarios y permisos', 'configuracion' => 'Configuración',
-    'whatsapp' => 'Eventos WhatsApp', 'licencias' => 'Licenciamiento',
+    'whatsapp' => 'Eventos WhatsApp', 'licencias' => 'Licenciamiento', 'compras' => 'Compras y proveedores',
     _ => 'eShokFix',
   };
 
@@ -61,7 +61,8 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'usuarios' => UsersPage(store: widget.store),
       'configuracion' => SettingsPage(store: widget.store, open: _open),
       'whatsapp' => WhatsAppEventsPage(store: widget.store),
-      'licencias' => LicensePage(),
+      'licencias' => const LicensePage(),
+      'compras' => PurchasesPage(store: widget.store),
       _ => MorePage(open: _open),
     };
     return Scaffold(
@@ -235,7 +236,6 @@ class OrderListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = _str(order['status']);
-    final color = _statusColor(status);
     return Padding(padding: const EdgeInsets.only(top: 8), child: Material(
       color: Colors.white, borderRadius: BorderRadius.circular(16),
       child: InkWell(borderRadius: BorderRadius.circular(16), onTap: onTap, child: Container(
@@ -659,6 +659,7 @@ class MorePage extends StatelessWidget {
     const SectionHeading('Más herramientas', subtitle: 'Módulos administrativos y operación comercial'), const SizedBox(height: 14),
     GridView.count(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), crossAxisCount: 2, childAspectRatio: 1.28, mainAxisSpacing: 10, crossAxisSpacing: 10, children: [
       _moduleTile(context, 'Punto de venta', 'Ventas y tickets', Icons.point_of_sale_outlined, 'pos', open),
+      _moduleTile(context, 'Compras y proveedores', 'Entradas y cuentas por pagar', Icons.local_shipping_outlined, 'compras', open),
       _moduleTile(context, 'Caja y cortes', 'Entradas y salidas', Icons.account_balance_wallet_outlined, 'caja', open),
       _moduleTile(context, 'Garantías', 'Vigencia y expedientes', Icons.verified_user_outlined, 'garantias', open),
       _moduleTile(context, 'Reportes', 'Resumen del negocio', Icons.query_stats_outlined, 'reportes', open),
@@ -748,3 +749,472 @@ class WhatsAppEventsPage extends StatefulWidget { const WhatsAppEventsPage({supe
 class _WhatsAppEventsPageState extends State<WhatsAppEventsPage> { late Future<List<Map<String, Object?>>> _future; @override void initState() { super.initState(); _future = widget.store.whatsappEvents(); } @override Widget build(BuildContext context) => PageFrame(child: Column(children: [const SectionHeading('Eventos de WhatsApp', subtitle: 'Registro local de los tres avisos autorizados'), const SizedBox(height: 10), GlassCard(child: const Text('Estos registros todavía no envían mensajes. La integración con WhatsApp Business Platform requiere configurar un número, credenciales, consentimiento y plantillas; la conversación normal del técnico permanece fuera de eShokFix.', style: TextStyle(fontSize: 10, color: Color(0xFF7D7389), height: 1.4))), const SizedBox(height: 10), Expanded(child: FutureBuilder<List<Map<String, Object?>>>(future: _future, builder: (context, snap) { if (!snap.hasData) return const Center(child: CircularProgressIndicator()); final rows = snap.data!; if (rows.isEmpty) return const EmptyState(title: 'Sin eventos', message: 'Al recibir, marcar listo o entregar un expediente aparecerán aquí.'); return ListView.builder(itemCount: rows.length, itemBuilder: (_, i) { final e = rows[i]; return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.chat_bubble_outline, color: eShokPurple), const SizedBox(width: 8), Expanded(child: Text(_str(e['event_type']), style: const TextStyle(fontWeight: FontWeight.w800))), const Text('PENDIENTE', style: TextStyle(fontSize: 8, color: Color(0xFFB47A2C), fontWeight: FontWeight.w900))]), const SizedBox(height: 5), Text('${_str(e['folio'])} · ${_str(e['client_name'])}', style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))), const SizedBox(height: 7), Text(_str(e['message']), style: const TextStyle(fontSize: 11))]))); }); }))])); }
 
 class LicensePage extends StatelessWidget { const LicensePage({super.key}); @override Widget build(BuildContext context) => PageFrame(child: ListView(children: [const SectionHeading('Licenciamiento', subtitle: 'Servidor eShokFix License Server'), const SizedBox(height: 12), GlassCard(gradient: const LinearGradient(colors: [Color(0xFFF3ECFB), Colors.white]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.vpn_key_outlined, color: eShokPurple, size: 35), const SizedBox(height: 9), const Text('Modo de prueba local', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)), const SizedBox(height: 5), const Text('La validación de licencia todavía no está conectada. Esta compilación no activa ni simula una licencia comercial.', style: TextStyle(fontSize: 11, color: Color(0xFF7E7489), height: 1.4)), const SizedBox(height: 11), const StatusChip(status: 'ESPERA_AUTORIZACION') ])), const SizedBox(height: 12), GlassCard(child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Arquitectura prevista', style: TextStyle(fontWeight: FontWeight.w800)), SizedBox(height: 7), Text('La app consultará una dirección HTTPS fija. El servidor de licencias correrá como servicio independiente en la PC del local y emitirá autorizaciones firmadas. El teléfono conservará una autorización local con vencimiento y política de gracia. El descubrimiento remoto y el túnel seguro se configurarán después de comprobar el acceso de red del local.', style: TextStyle(fontSize: 10, color: Color(0xFF7E7489), height: 1.45))]))])); }
+
+class PurchasesPage extends StatefulWidget {
+  const PurchasesPage({super.key, required this.store});
+  final LocalStore store;
+  @override
+  State<PurchasesPage> createState() => _PurchasesPageState();
+}
+
+class _PurchasesPageState extends State<PurchasesPage> {
+  bool _showSuppliers = false;
+  late Future<List<Map<String, Object?>>> _purchases;
+  late Future<List<Map<String, Object?>>> _suppliers;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  void _refresh() {
+    _purchases = widget.store.purchases();
+    _suppliers = widget.store.suppliers();
+  }
+
+  Future<void> _newSupplier([Map<String, Object?>? supplier]) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => SupplierDialog(store: widget.store, supplier: supplier),
+    );
+    if (saved == true && mounted) setState(_refresh);
+  }
+
+  Future<void> _newPurchase() async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => PurchaseDialog(store: widget.store),
+    );
+    if (saved == true && mounted) setState(_refresh);
+  }
+
+  Future<void> _openPurchase(Map<String, Object?> purchase) async {
+    final updated = await showDialog<bool>(
+      context: context,
+      builder: (_) => PurchaseDetailDialog(store: widget.store, purchase: purchase),
+    );
+    if (updated == true && mounted) setState(_refresh);
+  }
+
+  @override
+  Widget build(BuildContext context) => PageFrame(
+    child: Column(children: [
+      SectionHeading(
+        'Compras y proveedores',
+        subtitle: _showSuppliers ? 'Directorio de proveedores' : 'Recepciones y cuentas por pagar',
+        trailing: FilledButton.tonalIcon(
+          onPressed: _showSuppliers ? () => _newSupplier() : _newPurchase,
+          icon: Icon(_showSuppliers ? Icons.person_add_alt_1 : Icons.add_shopping_cart, size: 17),
+          label: Text(_showSuppliers ? 'Nuevo proveedor' : 'Nueva compra'),
+        ),
+      ),
+      const SizedBox(height: 12),
+      SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(value: false, label: Text('Compras'), icon: Icon(Icons.receipt_long_outlined)),
+          ButtonSegment(value: true, label: Text('Proveedores'), icon: Icon(Icons.local_shipping_outlined)),
+        ],
+        selected: {_showSuppliers},
+        onSelectionChanged: (value) => setState(() => _showSuppliers = value.first),
+      ),
+      const SizedBox(height: 10),
+      Expanded(
+        child: _showSuppliers
+          ? FutureBuilder<List<Map<String, Object?>>>(
+              future: _suppliers,
+              builder: (context, snap) {
+                if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                final rows = snap.data!;
+                if (rows.isEmpty) return const EmptyState(
+                  title: 'Sin proveedores',
+                  message: 'Registra a tus proveedores para documentar las compras del taller.',
+                );
+                return ListView.builder(
+                  itemCount: rows.length,
+                  itemBuilder: (_, index) {
+                    final row = rows[index];
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 7),
+                      child: GlassCard(child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const CircleAvatar(
+                          backgroundColor: eShokPurpleLight,
+                          child: Icon(Icons.local_shipping_outlined, color: eShokPurple),
+                        ),
+                        title: Text(_str(row['name']), style: const TextStyle(fontWeight: FontWeight.w800)),
+                        subtitle: Text([
+                          _str(row['phone']),
+                          _str(row['email']),
+                          if (_str(row['tax_id']).isNotEmpty) 'RFC ${_str(row['tax_id'])}',
+                        ].where((v) => v.isNotEmpty).join(' · ')),
+                        trailing: const Icon(Icons.edit_outlined, color: eShokPurple),
+                        onTap: () => _newSupplier(row),
+                      )),
+                    );
+                  },
+                );
+              },
+            )
+          : FutureBuilder<List<Map<String, Object?>>>(
+              future: _purchases,
+              builder: (context, snap) {
+                if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+                if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+                final rows = snap.data!;
+                if (rows.isEmpty) return const EmptyState(
+                  title: 'Sin compras registradas',
+                  message: 'Registra una compra para aumentar existencias y controlar pagos al proveedor.',
+                );
+                return ListView.builder(
+                  itemCount: rows.length,
+                  itemBuilder: (_, index) {
+                    final row = rows[index];
+                    final balance = PurchaseAccounting.balance(
+                      _num(row['total']), _num(row['paid']),
+                    );
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 7),
+                      child: GlassCard(child: ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFEAF4EF),
+                          child: Icon(Icons.inventory_2_outlined, color: Color(0xFF258A62)),
+                        ),
+                        title: Text(_str(row['folio']), style: const TextStyle(fontWeight: FontWeight.w900)),
+                        subtitle: Text('${_str(row['supplier_name'])} · ${_date(row['created_at'])}\n${_str(row['payment_status'])} · Saldo ${_money(balance)}'),
+                        isThreeLine: true,
+                        trailing: Text(_money(row['total']), style: const TextStyle(fontWeight: FontWeight.w900)),
+                        onTap: () => _openPurchase(row),
+                      )),
+                    );
+                  },
+                );
+              },
+            ),
+      ),
+    ]),
+  );
+}
+
+class SupplierDialog extends StatefulWidget {
+  const SupplierDialog({super.key, required this.store, this.supplier});
+  final LocalStore store;
+  final Map<String, Object?>? supplier;
+  @override
+  State<SupplierDialog> createState() => _SupplierDialogState();
+}
+
+class _SupplierDialogState extends State<SupplierDialog> {
+  late final name = TextEditingController(text: _str(widget.supplier?['name']));
+  late final phone = TextEditingController(text: _str(widget.supplier?['phone']));
+  late final whatsapp = TextEditingController(text: _str(widget.supplier?['whatsapp']));
+  late final email = TextEditingController(text: _str(widget.supplier?['email']));
+  late final taxId = TextEditingController(text: _str(widget.supplier?['tax_id']));
+  late final address = TextEditingController(text: _str(widget.supplier?['address']));
+  late final notes = TextEditingController(text: _str(widget.supplier?['notes']));
+
+  @override
+  void dispose() {
+    for (final c in [name, phone, whatsapp, email, taxId, address, notes]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    scrollable: true,
+    title: Text(widget.supplier == null ? 'Nuevo proveedor' : 'Editar proveedor'),
+    content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
+      TextField(controller: name, decoration: const InputDecoration(labelText: 'Razón social / nombre')),
+      const SizedBox(height: 8),
+      TextField(controller: taxId, decoration: const InputDecoration(labelText: 'RFC')),
+      const SizedBox(height: 8),
+      TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Teléfono')),
+      const SizedBox(height: 8),
+      TextField(controller: whatsapp, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'WhatsApp')),
+      const SizedBox(height: 8),
+      TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Correo')),
+      const SizedBox(height: 8),
+      TextField(controller: address, maxLines: 2, decoration: const InputDecoration(labelText: 'Domicilio')),
+      const SizedBox(height: 8),
+      TextField(controller: notes, maxLines: 2, decoration: const InputDecoration(labelText: 'Notas')),
+    ])),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+      FilledButton(
+        onPressed: () async {
+          if (name.text.trim().isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('El nombre del proveedor es obligatorio.')));
+            return;
+          }
+          try {
+            await widget.store.saveSupplier(
+              id: widget.supplier?['id'] as int?,
+              name: name.text, phone: phone.text, whatsapp: whatsapp.text,
+              email: email.text, taxId: taxId.text, address: address.text,
+              notes: notes.text,
+            );
+            if (context.mounted) Navigator.pop(context, true);
+          } catch (e) {
+            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+          }
+        },
+        child: const Text('Guardar proveedor'),
+      ),
+    ],
+  );
+}
+
+class PurchaseDialog extends StatefulWidget {
+  const PurchaseDialog({super.key, required this.store});
+  final LocalStore store;
+  @override
+  State<PurchaseDialog> createState() => _PurchaseDialogState();
+}
+
+class _PurchaseDialogState extends State<PurchaseDialog> {
+  List<Map<String, Object?>> _suppliers = [];
+  List<Map<String, Object?>> _items = [];
+  int? _supplierId;
+  int? _itemId;
+  final quantity = TextEditingController(text: '1');
+  final unitCost = TextEditingController(text: '0');
+  final discount = TextEditingController(text: '0');
+  final paid = TextEditingController(text: '0');
+  final notes = TextEditingController();
+  String paymentMethod = 'EFECTIVO';
+  bool loading = true;
+  bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final suppliers = await widget.store.suppliers();
+    final items = await widget.store.inventory();
+    if (!mounted) return;
+    setState(() {
+      _suppliers = suppliers;
+      _items = items;
+      _supplierId = suppliers.isEmpty ? null : suppliers.first['id'] as int;
+      _itemId = items.isEmpty ? null : items.first['id'] as int;
+      if (_items.isNotEmpty) unitCost.text = _str(_items.first['cost'], '0');
+      loading = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final c in [quantity, unitCost, discount, paid, notes]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  double _value(TextEditingController c) => double.tryParse(c.text.trim()) ?? -1;
+
+  Future<void> _save() async {
+    if (_supplierId == null || _itemId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Primero registra un proveedor y al menos un artículo de inventario.'),
+      ));
+      return;
+    }
+    setState(() => saving = true);
+    try {
+      await widget.store.createPurchase(
+        supplierId: _supplierId!,
+        items: [{
+          'item_id': _itemId!,
+          'quantity': _value(quantity),
+          'unit_cost': _value(unitCost),
+        }],
+        discount: _value(discount),
+        paid: _value(paid),
+        paymentMethod: paymentMethod,
+        notes: notes.text,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) return const AlertDialog(content: SizedBox(
+      height: 90, child: Center(child: CircularProgressIndicator()),
+    ));
+    final selectedItem = _items.where((e) => e['id'] == _itemId).firstOrNull;
+    return AlertDialog(
+      scrollable: true,
+      title: const Text('Registrar compra'),
+      content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
+        DropdownButtonFormField<int>(
+          initialValue: _supplierId,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Proveedor'),
+          items: _suppliers.map((s) => DropdownMenuItem(
+            value: s['id'] as int, child: Text(_str(s['name']), overflow: TextOverflow.ellipsis),
+          )).toList(),
+          onChanged: (v) => setState(() => _supplierId = v),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<int>(
+          initialValue: _itemId,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Artículo que ingresa'),
+          items: _items.map((i) => DropdownMenuItem(
+            value: i['id'] as int,
+            child: Text('${_str(i['name'])} · stock ${_num(i['stock']).toStringAsFixed(0)}', overflow: TextOverflow.ellipsis),
+          )).toList(),
+          onChanged: (v) {
+            setState(() {
+              _itemId = v;
+              final selected = _items.where((e) => e['id'] == v).firstOrNull;
+              if (selected != null) unitCost.text = _str(selected['cost'], '0');
+            });
+          },
+        ),
+        const SizedBox(height: 8),
+        _field(quantity, 'Cantidad recibida', required: true, number: true),
+        const SizedBox(height: 8),
+        _field(unitCost, 'Costo unitario', required: true, number: true),
+        const SizedBox(height: 8),
+        _field(discount, 'Descuento', number: true),
+        const SizedBox(height: 8),
+        _field(paid, 'Pago inicial al proveedor', number: true),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          initialValue: paymentMethod,
+          decoration: const InputDecoration(labelText: 'Método de pago'),
+          items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+            .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+          onChanged: (v) => setState(() => paymentMethod = v ?? paymentMethod),
+        ),
+        const SizedBox(height: 8),
+        _field(notes, 'Notas / referencia'),
+        if (selectedItem != null) Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Existencia actual: ${_num(selectedItem['stock']).toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+          ),
+        ),
+      ])),
+      actions: [
+        TextButton(onPressed: saving ? null : () => Navigator.pop(context, false), child: const Text('Cancelar')),
+        FilledButton(onPressed: saving ? null : _save, child: Text(saving ? 'Guardando…' : 'Registrar compra')),
+      ],
+    );
+  }
+}
+
+class PurchaseDetailDialog extends StatefulWidget {
+  const PurchaseDetailDialog({super.key, required this.store, required this.purchase});
+  final LocalStore store;
+  final Map<String, Object?> purchase;
+  @override
+  State<PurchaseDetailDialog> createState() => _PurchaseDetailDialogState();
+}
+
+class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
+  final amount = TextEditingController();
+  String method = 'EFECTIVO';
+  bool saving = false;
+  late Future<List<Map<String, Object?>>> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = widget.store.purchaseItems(widget.purchase['id'] as int);
+  }
+
+  @override
+  void dispose() {
+    amount.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = _num(widget.purchase['total']);
+    final paid = _num(widget.purchase['paid']);
+    final balance = PurchaseAccounting.balance(total, paid);
+    return AlertDialog(
+      scrollable: true,
+      title: Text(_str(widget.purchase['folio'])),
+      content: SizedBox(width: 430, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Proveedor: ${_str(widget.purchase['supplier_name'])}'),
+        const SizedBox(height: 8),
+        FutureBuilder<List<Map<String, Object?>>>(
+          future: _items,
+          builder: (context, snap) {
+            if (!snap.hasData) return const LinearProgressIndicator();
+            return Column(children: snap.data!.map((line) => ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(_str(line['description'])),
+              subtitle: Text('${_num(line['quantity'])} × ${_money(line['unit_cost'])}'),
+              trailing: Text(_money(line['line_total']), style: const TextStyle(fontWeight: FontWeight.w800)),
+            )).toList());
+          },
+        ),
+        const Divider(),
+        _reportLine('Subtotal', _money(widget.purchase['subtotal'])),
+        _reportLine('Descuento', _money(widget.purchase['discount'])),
+        _reportLine('Total', _money(total)),
+        _reportLine('Pagado', _money(paid)),
+        _reportLine('Saldo', _money(balance)),
+        if (balance > 0.01) ...[
+          const Divider(),
+          const Text('Registrar abono', style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          TextField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(labelText: 'Importe', hintText: balance.toStringAsFixed(2))),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: method,
+            decoration: const InputDecoration(labelText: 'Método'),
+            items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+              .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+            onChanged: (v) => setState(() => method = v ?? method),
+          ),
+        ],
+      ])),
+      actions: [
+        TextButton(onPressed: saving ? null : () => Navigator.pop(context, false), child: const Text('Cerrar')),
+        if (balance > 0.01) FilledButton(
+          onPressed: saving ? null : () async {
+            final value = double.tryParse(amount.text.trim());
+            if (value == null) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Escribe un importe válido.')));
+              return;
+            }
+            setState(() => saving = true);
+            try {
+              await widget.store.recordPurchasePayment(widget.purchase['id'] as int, value, method);
+              if (mounted) Navigator.pop(context, true);
+            } catch (e) {
+              if (mounted) {
+                setState(() => saving = false);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+              }
+            }
+          },
+          child: Text(saving ? 'Guardando…' : 'Registrar abono'),
+        ),
+      ],
+    );
+  }
+}
