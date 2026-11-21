@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 /// Official eShokFix product mark, shared by setup and the dashboard.
 class BrandLogo extends StatelessWidget {
@@ -7,9 +6,10 @@ class BrandLogo extends StatelessWidget {
   final BoxFit fit;
 
   @override
-  Widget build(BuildContext context) => SvgPicture.asset(
-    'assets/branding/eshokfix_logo.svg',
+  Widget build(BuildContext context) => Image.asset(
+    'assets/branding/eshokfix_logo.png',
     fit: fit,
-    semanticsLabel: 'eShokFix',
+    semanticLabel: 'eShokFix',
+    filterQuality: FilterQuality.medium,
   );
 }
