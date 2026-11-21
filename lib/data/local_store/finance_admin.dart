@@ -99,13 +99,6 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     return {'orders_total': (orders.first['total'] as num).toDouble(), 'orders_paid': (orders.first['paid'] as num).toDouble(), 'orders_count': (orders.first['count'] as num).toDouble(), 'sales_total': (sales.first['total'] as num).toDouble(), 'sales_count': (sales.first['count'] as num).toDouble(), 'cash_balance': cash['balance'] ?? 0, 'digital_balance': cash['digital_balance'] ?? 0};
   }
 
-  Future<List<Map<String, Object?>>> users() => db.query('users', orderBy: 'display_name');
-  Future<void> saveUser({int? id, required String username, required String name, required String role, bool active = true}) async {
-    requirePermission('users.manage');
-    requirePermission('users.manage');
-    final data = {'username': username.trim(), 'display_name': name.trim(), 'role': role, 'active': active ? 1 : 0, 'created_at': _now()};
-    if (id == null) await db.insert('users', data); else await db.update('users', data, where: 'id=?', whereArgs: [id]);
-  }
   Future<String> setting(String key, {String fallback = ''}) async {
     requirePermission('settings.view');
     final rows = await db.query('settings', columns: ['value'], where: 'key=?', whereArgs: [key], limit: 1);
