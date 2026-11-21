@@ -172,7 +172,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
                 child: ListTile(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.switch_account_outlined),
+                  leading: Icon(Icons.switch_account),
                   title: Text('Cambiar de usuario'),
                 ),
               ),
