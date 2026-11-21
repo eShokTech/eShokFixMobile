@@ -77,6 +77,10 @@ class _EShokFixShellState extends State<EShokFixShell> {
   }
 
   void _onGlobalSearchChanged(String value) {
+    if (!_canOpen('busqueda')) {
+      _open('busqueda');
+      return;
+    }
     setState(() {
       _globalSearchQuery = value;
       _view = 'busqueda';
@@ -120,15 +124,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
   int get _selectedNav => switch (_view) {
     'inicio' => 0, 'ordenes' => 1, 'clientes' => 2, 'caja' || 'pos' => 3, _ => 4,
   };
-  String get _title => switch (_view) {
-    'inicio' => 'Inicio', 'ordenes' => 'Órdenes de servicio', 'clientes' => 'Clientes',
-    'inventario' => 'Inventario', 'mas' => 'Más módulos', 'pos' => 'Punto de venta',
-    'caja' || 'pos' => 'Punto de venta', 'cortes' => 'Cortes de caja', 'garantias' => 'Garantías', 'reportes' => 'Reportes',
-    'usuarios' => 'Usuarios y permisos', 'configuracion' => 'Configuración',
-    'whatsapp' => 'Eventos WhatsApp', 'licencias' => 'Licenciamiento', 'compras' => 'Compras y proveedores',
-    'busqueda' => 'Búsqueda global', 'notificaciones' => 'Notificaciones',
-    _ => 'eShokFix',
-  };
+
 
   @override
   Widget build(BuildContext context) {
