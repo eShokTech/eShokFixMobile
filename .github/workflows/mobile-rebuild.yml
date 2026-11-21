@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: eshokfix-mobile-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   verify-and-build:
