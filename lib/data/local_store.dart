@@ -743,6 +743,127 @@ class LocalStore {
     });
   }
 
+  Future<List<Map<String, Object?>>> saleItems(int saleId) =>
+      db.query('sale_items', where: 'sale_id=?', whereArgs: [saleId], orderBy: 'id');
+
+  Future<int> createSaleCart({
+    int? clientId,
+    required List<Map<String, Object?>> items,
+    required String paymentMethod,
+    double discount = 0,
+    String notes = '',
+  }) async {
+    if (items.isEmpty) throw ArgumentError('Agrega al menos un producto o servicio.');
+    if (discount < 0) throw ArgumentError('El descuento no puede ser negativo.');
+
+    final prepared = <Map<String, Object?>>[];
+    var subtotal = 0.0;
+    for (final line in items) {
+      final itemId = line['item_id'];
+      final description = (line['description'] ?? '').toString().trim();
+      final quantityValue = line['quantity'];
+      final priceValue = line['unit_price'];
+      if (description.isEmpty || quantityValue is! num || priceValue is! num) {
+        throw ArgumentError('Cada partida necesita descripción, cantidad y precio válidos.');
+      }
+      final quantity = quantityValue.toDouble();
+      final unitPrice = priceValue.toDouble();
+      if (quantity <= 0 || unitPrice < 0 || (itemId != null && itemId is! int)) {
+        throw ArgumentError('Revisa la cantidad, precio y artículo de cada partida.');
+      }
+      final lineTotal = quantity * unitPrice;
+      subtotal += lineTotal;
+      prepared.add({
+        'item_id': itemId,
+        'description': description,
+        'quantity': quantity,
+        'unit_price': unitPrice,
+        'line_total': lineTotal,
+      });
+    }
+    if (discount > subtotal) throw ArgumentError('El descuento no puede superar el subtotal.');
+    final total = (subtotal - discount).clamp(0.0, double.infinity).toDouble();
+    final now = _now();
+
+    return db.transaction((tx) async {
+      if (clientId != null) {
+        final client = await tx.query('clients', columns: ['id'],
+          where: 'id=?', whereArgs: [clientId], limit: 1);
+        if (client.isEmpty) throw StateError('El cliente seleccionado ya no existe.');
+      }
+
+      for (final line in prepared) {
+        final itemId = line['item_id'];
+        if (itemId == null) continue;
+        final item = await tx.query('inventory_items',
+          columns: ['stock', 'name'],
+          where: 'id=?', whereArgs: [itemId], limit: 1);
+        if (item.isEmpty) throw StateError('Uno de los artículos ya no existe en inventario.');
+        final stock = (item.first['stock'] as num).toDouble();
+        final quantity = line['quantity'] as double;
+        if (stock < quantity) {
+          throw StateError('Existencia insuficiente para ${line['description']}. Disponible: $stock.');
+        }
+        await tx.update('inventory_items', {
+          'stock': stock - quantity, 'updated_at': now,
+        }, where: 'id=?', whereArgs: [itemId]);
+        await tx.insert('inventory_movements', {
+          'item_id': itemId, 'movement_type': 'OUT',
+          'quantity': quantity, 'reason': 'Venta POS',
+          'created_at': now,
+        });
+      }
+
+      final saleId = await tx.insert('sales', {
+        'folio': 'PENDING-${DateTime.now().microsecondsSinceEpoch}',
+        'client_id': clientId,
+        'subtotal': subtotal,
+        'discount': discount,
+        'total': total,
+        'payment_method': paymentMethod,
+        'amount_paid': total,
+        'notes': notes.trim(),
+        'created_at': now,
+      });
+      final folio = _moneyFolio('PV', saleId);
+      await tx.update('sales', {'folio': folio}, where: 'id=?', whereArgs: [saleId]);
+
+      for (final line in prepared) {
+        await tx.insert('sale_items', {
+          'sale_id': saleId,
+          'item_id': line['item_id'],
+          'description': line['description'],
+          'quantity': line['quantity'],
+          'unit_price': line['unit_price'],
+          'line_total': line['line_total'],
+        });
+      }
+      if (total > 0) {
+        await tx.insert('cash_movements', {
+          'movement_type': 'IN', 'amount': total,
+          'concept': 'Venta POS $folio', 'reference': paymentMethod,
+          'created_at': now, 'related_sale_id': saleId,
+        });
+      }
+      await tx.insert('audit_log', {
+        'entity': 'sale', 'entity_id': saleId,
+        'action': 'CREATE', 'detail': '$folio · $total',
+        'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'sale', 'entity_id': saleId,
+        'operation': 'CREATE',
+        'payload': jsonEncode({
+          'folio': folio, 'client_id': clientId, 'subtotal': subtotal,
+          'discount': discount, 'total': total, 'method': paymentMethod,
+          'items': prepared,
+        }),
+        'created_at': now,
+      });
+      return saleId;
+    });
+  }
+
   Future<Map<String, double>> cashSummary() async {
     final rows = await db.rawQuery('''SELECT COALESCE(SUM(CASE WHEN movement_type='IN' THEN amount ELSE -amount END),0) balance,
       COALESCE(SUM(CASE WHEN movement_type='IN' THEN amount ELSE 0 END),0) income,
