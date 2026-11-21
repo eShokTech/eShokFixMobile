@@ -150,10 +150,9 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
       ORDER BY p.id DESC''', [q, q]);
   }
 
-  Future<List<Map<String, Object?>>> purchaseItems(int purchaseId) =>
-      db.rawQuery('''SELECT pi.*, i.sku FROM purchase_items pi
+  Future<List<Map<String, Object?>>> purchaseItems(int purchaseId) { requirePermission('purchases.view'); return db.rawQuery('''SELECT pi.*, i.sku FROM purchase_items pi
       JOIN inventory_items i ON i.id=pi.item_id
-      WHERE pi.purchase_id=? ORDER BY pi.id''', [purchaseId]);
+      WHERE pi.purchase_id=? ORDER BY pi.id''', [purchaseId]); }
 
   Future<int> createPurchase({
     required int supplierId,
