@@ -48,7 +48,7 @@ class AuthService {
       'orders.view', 'orders.manage', 'orders.authorize', 'orders.pay', 'orders.payments.view',
       'inventory.view', 'inventory.manage', 'sales.view', 'sales.manage',
       'cash.view', 'cash.manage', 'purchases.view', 'purchases.manage',
-      'warranties.view', 'reports.view', 'settings.view', 'settings.manage',
+      'warranties.view', 'reports.view', 'settings.read', 'settings.view', 'settings.manage',
     },
     'TECNICO': {
       'dashboard.view', 'clients.view', 'clients.manage', 'settings.read',
