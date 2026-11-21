@@ -337,6 +337,9 @@ class LocalStore {
     });
   }
 
+  Future<List<Map<String, Object?>>> orderPayments(int orderId) =>
+      db.query('payments', where: 'order_id=?', whereArgs: [orderId], orderBy: 'id DESC');
+
   Future<List<Map<String, Object?>>> orderEvents(int id) => db.query('order_events', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC');
   Future<List<Map<String, Object?>>> orderEvidence(int id) => db.query('evidences', where: 'order_id=?', whereArgs: [id], orderBy: 'id DESC');
   Future<void> addEvidence(int orderId, String path, String caption) async {
@@ -675,6 +678,98 @@ class LocalStore {
   }
 
   Future<List<Map<String, Object?>>> whatsappEvents() => db.rawQuery('''SELECT w.*, o.folio, c.name client_name FROM whatsapp_events w JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id ORDER BY w.id DESC''');
+
+  Future<Map<String, int>> demoDataCounts() async {
+    int count(String table) => 0;
+    final clientsCount = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM clients WHERE is_demo=1'),
+    ) ?? 0;
+    final ordersCount = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM service_orders WHERE is_demo=1'),
+    ) ?? 0;
+    final itemsCount = Sqflite.firstIntValue(
+      await db.rawQuery('SELECT COUNT(*) FROM inventory_items WHERE is_demo=1'),
+    ) ?? 0;
+    return {'clients': clientsCount, 'orders': ordersCount, 'items': itemsCount};
+  }
+
+  Future<void> removeDemoData() async {
+    await db.transaction((tx) async {
+      final demoOrders = await tx.query(
+        'service_orders', columns: ['id'], where: 'is_demo=1',
+      );
+      for (final row in demoOrders) {
+        final orderId = row['id'] as int;
+        final evidence = await tx.query(
+          'evidences', columns: ['id'], where: 'order_id=?', whereArgs: [orderId],
+        );
+        for (final item in evidence) {
+          await tx.delete('sync_outbox', where: 'entity=? AND entity_id=?',
+            whereArgs: ['evidence', item['id']]);
+        }
+        await tx.delete('warranties', where: 'order_id=?', whereArgs: [orderId]);
+        await tx.delete('whatsapp_events', where: 'order_id=?', whereArgs: [orderId]);
+        await tx.delete('payments', where: 'order_id=?', whereArgs: [orderId]);
+        await tx.delete('evidences', where: 'order_id=?', whereArgs: [orderId]);
+        await tx.delete('order_events', where: 'order_id=?', whereArgs: [orderId]);
+        await tx.delete('cash_movements', where: 'related_order_id=?', whereArgs: [orderId]);
+        await tx.delete('sync_outbox', where: 'entity_id=? AND entity IN (?,?)',
+          whereArgs: [orderId, 'service_order', 'payment']);
+        await tx.delete('audit_log', where: 'entity=? AND entity_id=?',
+          whereArgs: ['service_order', orderId]);
+      }
+      await tx.delete('service_orders', where: 'is_demo=1');
+
+      final demoClients = await tx.query(
+        'clients', columns: ['id'], where: 'is_demo=1',
+      );
+      for (final row in demoClients) {
+        final clientId = row['id'] as int;
+        final realOrders = Sqflite.firstIntValue(await tx.rawQuery(
+          'SELECT COUNT(*) FROM service_orders WHERE client_id=?',
+          [clientId],
+        )) ?? 0;
+        if (realOrders > 0) {
+          await tx.update('clients', {'is_demo': 0}, where: 'id=?', whereArgs: [clientId]);
+        } else {
+          await tx.delete('devices', where: 'client_id=?', whereArgs: [clientId]);
+          await tx.delete('sync_outbox', where: 'entity=? AND entity_id=?',
+            whereArgs: ['client', clientId]);
+          await tx.delete('audit_log', where: 'entity=? AND entity_id=?',
+            whereArgs: ['client', clientId]);
+          await tx.delete('clients', where: 'id=?', whereArgs: [clientId]);
+        }
+      }
+
+      final demoItems = await tx.query(
+        'inventory_items', columns: ['id'], where: 'is_demo=1',
+      );
+      for (final row in demoItems) {
+        final itemId = row['id'] as int;
+        final sold = Sqflite.firstIntValue(await tx.rawQuery(
+          'SELECT COUNT(*) FROM sale_items WHERE item_id=?', [itemId],
+        )) ?? 0;
+        if (sold > 0) {
+          await tx.update('inventory_items', {'is_demo': 0},
+            where: 'id=?', whereArgs: [itemId]);
+        } else {
+          await tx.delete('inventory_movements', where: 'item_id=?', whereArgs: [itemId]);
+          await tx.delete('sync_outbox', where: 'entity=? AND entity_id=?',
+            whereArgs: ['inventory_item', itemId]);
+          await tx.delete('inventory_items', where: 'id=?', whereArgs: [itemId]);
+        }
+      }
+      await tx.insert('settings', {
+        'key': 'demo_mode', 'value': '0',
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await tx.insert('audit_log', {
+        'entity': 'system', 'entity_id': null,
+        'action': 'DEMO_DATA_CLEANUP',
+        'detail': 'Se retiraron registros de demostración sin afectar registros reales.',
+        'created_at': _now(),
+      });
+    });
+  }
 
   Future<void> _audit(String entity, int id, String action, String detail) async {
     await db.insert('audit_log', {'entity': entity, 'entity_id': id, 'action': action, 'detail': detail, 'created_at': _now()});
