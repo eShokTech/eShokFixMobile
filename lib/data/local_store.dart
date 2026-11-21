@@ -827,8 +827,8 @@ class LocalStore {
         await tx.delete('evidences', where: 'order_id=?', whereArgs: [orderId]);
         await tx.delete('order_events', where: 'order_id=?', whereArgs: [orderId]);
         await tx.delete('cash_movements', where: 'related_order_id=?', whereArgs: [orderId]);
-        await tx.delete('sync_outbox', where: 'entity_id=? AND entity IN (?,?)',
-          whereArgs: [orderId, 'service_order', 'payment']);
+        await tx.delete('sync_outbox', where: 'entity_id=? AND entity IN (?,?,?)',
+          whereArgs: [orderId, 'service_order', 'payment', 'order_part']);
         await tx.delete('audit_log', where: 'entity=? AND entity_id=?',
           whereArgs: ['service_order', orderId]);
       }
@@ -843,7 +843,11 @@ class LocalStore {
           'SELECT COUNT(*) FROM service_orders WHERE client_id=?',
           [clientId],
         )) ?? 0;
-        if (realOrders > 0) {
+        final relatedSales = Sqflite.firstIntValue(await tx.rawQuery(
+          'SELECT COUNT(*) FROM sales WHERE client_id=?',
+          [clientId],
+        )) ?? 0;
+        if (realOrders > 0 || relatedSales > 0) {
           await tx.update('clients', {'is_demo': 0}, where: 'id=?', whereArgs: [clientId]);
         } else {
           await tx.delete('devices', where: 'client_id=?', whereArgs: [clientId]);
@@ -863,7 +867,13 @@ class LocalStore {
         final sold = Sqflite.firstIntValue(await tx.rawQuery(
           'SELECT COUNT(*) FROM sale_items WHERE item_id=?', [itemId],
         )) ?? 0;
-        if (sold > 0) {
+        final purchased = Sqflite.firstIntValue(await tx.rawQuery(
+          'SELECT COUNT(*) FROM purchase_items WHERE item_id=?', [itemId],
+        )) ?? 0;
+        final usedInOrders = Sqflite.firstIntValue(await tx.rawQuery(
+          'SELECT COUNT(*) FROM order_parts WHERE item_id=?', [itemId],
+        )) ?? 0;
+        if (sold > 0 || purchased > 0 || usedInOrders > 0) {
           await tx.update('inventory_items', {'is_demo': 0},
             where: 'id=?', whereArgs: [itemId]);
         } else {
