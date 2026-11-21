@@ -6,6 +6,13 @@ import 'package:sqflite/sqflite.dart';
 import '../domain/workflow.dart';
 import '../domain/financial_rules.dart';
 
+part 'local_store/workshop.dart';
+part 'local_store/inventory_purchases.dart';
+part 'local_store/sales.dart';
+part 'local_store/purchase_receiving.dart';
+part 'local_store/finance_admin.dart';
+
+
 Future<void> _createOrderRefundTable(DatabaseExecutor db) async {
   await db.execute('''CREATE TABLE IF NOT EXISTS order_refunds(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,12 +135,6 @@ Future<void> _createPurchaseTables(DatabaseExecutor db) async {
   await db.execute('CREATE INDEX idx_purchases_created ON purchases(created_at)');
   await db.execute('CREATE INDEX idx_purchase_items_purchase ON purchase_items(purchase_id)');
 }
-
-part 'local_store/workshop.dart';
-part 'local_store/inventory_purchases.dart';
-part 'local_store/sales.dart';
-part 'local_store/purchase_receiving.dart';
-part 'local_store/finance_admin.dart';
 
 class LocalStore {
   LocalStore._(this.db);
@@ -409,16 +410,6 @@ class LocalStore {
     });
   }
 
-
-  Future<void> _inventoryMovement(int itemId, double quantity, String type, String reason) async {
-    await db.insert('inventory_movements', {
-      'item_id': itemId,
-      'movement_type': type,
-      'quantity': quantity.abs(),
-      'reason': reason,
-      'created_at': _now(),
-    });
-  }
 
   Future<void> _audit(String entity, int id, String action, String detail) async {
     await db.insert('audit_log', {
