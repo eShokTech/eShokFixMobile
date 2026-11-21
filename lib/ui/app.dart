@@ -116,14 +116,14 @@ class _EShokFixShellState extends State<EShokFixShell> {
         actions: [
           IconButton(
             tooltip: 'Modo local sin servidor conectado',
-            onPressed: () => _showInfo(context, 'Modo local', 'Los datos y operaciones de esta beta se guardan en el teléfono. La sincronización con PC y el licenciamiento remoto todavía no están conectados.'),
+            onPressed: () => _showInfo(context, 'Modo local', 'Los datos y operaciones de esta beta se guardan en el teléfono. La conexión con el futuro servidor propio y el licenciamiento todavía no están implementados.'),
             icon: const Icon(Icons.cloud_off_outlined, color: eShokPurple),
           ),
           Padding(
             padding: const EdgeInsets.only(left: 4),
             child: Center(child: Text(widget.authUser.displayName, style: const TextStyle(fontSize: 10, color: Color(0xFF746A80)))),
           ),
-          IconButton(tooltip: 'Cerrar sesión', onPressed: onLogout, icon: const Icon(Icons.logout, color: eShokPurple)),
+          IconButton(tooltip: 'Cerrar sesión', onPressed: widget.onLogout, icon: const Icon(Icons.logout, color: eShokPurple)),
           const SizedBox(width: 6),
         ],
       ),
