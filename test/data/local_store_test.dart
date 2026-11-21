@@ -292,6 +292,37 @@ void main() {
     expect(clients, hasLength(1));
   });
 
+
+  test('first-run setup creates a salted password hash, never a plaintext password', () async {
+    final auth = AuthService(store.db);
+    expect(await auth.needsInitialSetup(), isTrue);
+    await auth.createInitialAdmin(
+      username: 'admin',
+      displayName: 'Administrador principal',
+      password: 'TallerSeguro2026',
+    );
+    expect(await auth.needsInitialSetup(), isFalse);
+    final rows = await store.db.query(
+      'users',
+      columns: ['password_salt', 'password_hash'],
+      where: 'username=?',
+      whereArgs: ['admin'],
+      limit: 1,
+    );
+    expect(rows, hasLength(1));
+    expect(rows.single['password_salt'], isNotEmpty);
+    expect(rows.single['password_hash'], isNot('TallerSeguro2026'));
+    expect((rows.single['password_hash'] as String).length, greaterThan(40));
+    await expectLater(
+      auth.createInitialAdmin(
+        username: 'admin',
+        displayName: 'Segundo intento',
+        password: 'OtroPassword2026',
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
   test('role permissions are enforced at the data layer', () async {
     store.setAuthenticatedUser(const AuthUser(
       id: 2, username: 'tecnico', displayName: 'Técnico', role: 'TECNICO',
