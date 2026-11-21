@@ -1054,7 +1054,13 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
     if (loading) return const AlertDialog(content: SizedBox(
       height: 90, child: Center(child: CircularProgressIndicator()),
     ));
-    final selectedItem = _items.where((e) => e['id'] == _itemId).firstOrNull;
+    Map<String, Object?>? selectedItem;
+    for (final candidate in _items) {
+      if (candidate['id'] == _itemId) {
+        selectedItem = candidate;
+        break;
+      }
+    }
     return AlertDialog(
       scrollable: true,
       title: const Text('Registrar compra'),
@@ -1080,7 +1086,13 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
           onChanged: (v) {
             setState(() {
               _itemId = v;
-              final selected = _items.where((e) => e['id'] == v).firstOrNull;
+              Map<String, Object?>? selected;
+              for (final candidate in _items) {
+                if (candidate['id'] == v) {
+                  selected = candidate;
+                  break;
+                }
+              }
               if (selected != null) unitCost.text = _str(selected['cost'], '0');
             });
           },
