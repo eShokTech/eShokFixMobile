@@ -498,6 +498,28 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           Align(alignment: Alignment.centerLeft, child: Text('Garantía al entregar: ${o['warranty_days']} días', style: const TextStyle(fontSize: 10, color: Color(0xFF867C91)))),
         ])),
         const SizedBox(height: 12),
+        const SectionHeading('Historial de pagos'),
+        const SizedBox(height: 6),
+        FutureBuilder<List<Map<String, Object?>>>(
+          future: widget.store.orderPayments(widget.orderId),
+          builder: (context, paymentSnap) {
+            if (!paymentSnap.hasData) return const LinearProgressIndicator();
+            final rows = paymentSnap.data!;
+            if (rows.isEmpty) return const EmptyState(
+              title: 'Sin pagos registrados',
+              message: 'Los anticipos y abonos aparecerán en este historial.',
+            );
+            return GlassCard(child: Column(children: rows.map((payment) => ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.payments_outlined, color: eShokPurple),
+              title: Text(_money(payment['amount']), style: const TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text('${_str(payment['method'])} · ${_date(payment['created_at'])}'),
+              trailing: Text(_str(payment['reference']), style: const TextStyle(fontSize: 9)),
+            )).toList()));
+          },
+        ),
+        const SizedBox(height: 12),
         Row(children: [Expanded(child: SectionHeading('Evidencias')), FilledButton.tonalIcon(onPressed: _evidence, icon: const Icon(Icons.add_a_photo_outlined, size: 17), label: const Text('Tomar foto'))]),
         const SizedBox(height: 8),
         FutureBuilder<List<Map<String, Object?>>>(future: widget.store.orderEvidence(widget.orderId), builder: (context, evidenceSnap) {
@@ -742,8 +764,153 @@ class UserDialog extends StatefulWidget { const UserDialog({super.key, required 
 class _UserDialogState extends State<UserDialog> { final username = TextEditingController(); final name = TextEditingController(); String role = 'TECNICO'; @override void dispose() { username.dispose(); name.dispose(); super.dispose(); } @override Widget build(BuildContext context) => AlertDialog(title: const Text('Nuevo usuario'), content: Column(mainAxisSize: MainAxisSize.min, children: [_field(username, 'Usuario', required: true), const SizedBox(height: 8), _field(name, 'Nombre visible', required: true), const SizedBox(height: 8), DropdownButtonFormField<String>(value: role, decoration: const InputDecoration(labelText: 'Rol'), items: const ['ADMIN','ENCARGADO','TECNICO','CAJA'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => role = v ?? role))]), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')), FilledButton(onPressed: () async { if (username.text.trim().isEmpty || name.text.trim().isEmpty) return; try { await widget.store.saveUser(username: username.text, name: name.text, role: role); if (context.mounted) Navigator.pop(context, true); } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } }, child: const Text('Guardar'))]); }
 
 class SettingsPage extends StatefulWidget { const SettingsPage({super.key, required this.store, required this.open}); final LocalStore store; final ValueChanged<String> open; @override State<SettingsPage> createState() => _SettingsPageState(); }
-class _SettingsPageState extends State<SettingsPage> { final shop = TextEditingController(); final warranty = TextEditingController(); bool loaded = false; @override void didChangeDependencies() { super.didChangeDependencies(); if (!loaded) _load(); } Future<void> _load() async { shop.text = await widget.store.setting('shop_name', fallback: 'eShokFix'); warranty.text = await widget.store.setting('default_warranty_days', fallback: '30'); if (mounted) setState(() => loaded = true); } @override void dispose() { shop.dispose(); warranty.dispose(); super.dispose(); } @override Widget build(BuildContext context) => PageFrame(child: ListView(children: [const SectionHeading('Configuración', subtitle: 'Identidad y reglas generales'), const SizedBox(height: 13), GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Datos del taller', style: TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 9), TextField(controller: shop, decoration: const InputDecoration(labelText: 'Nombre comercial')), const SizedBox(height: 8), TextField(controller: warranty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Garantía predeterminada (días)')), const SizedBox(height: 10), FilledButton.icon(onPressed: loaded ? () async { await widget.store.saveSetting('shop_name', shop.text); await widget.store.saveSetting('default_warranty_days', warranty.text); if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Configuración guardada localmente.'))); } : null, icon: const Icon(Icons.save_outlined), label: const Text('Guardar cambios'))])), const SizedBox(height: 10), _settingsRow(context, Icons.people_outline, 'Usuarios y roles', 'Catálogo local de perfiles', () => widget.open('usuarios')), _settingsRow(context, Icons.notifications_active_outlined, 'Eventos de WhatsApp', 'Solo recepción, listo y entrega', () => widget.open('whatsapp')), _settingsRow(context, Icons.vpn_key_outlined, 'Licenciamiento', 'Conexión con servidor pendiente', () => widget.open('licencias')), const SizedBox(height: 12), GlassCard(child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Política de comunicación', style: TextStyle(fontWeight: FontWeight.w800)), SizedBox(height: 6), Text('El flujo previsto genera únicamente tres eventos automáticos: recepción del equipo, equipo listo para recoger y comprobante con garantía al registrar la entrega. Los estados internos no disparan mensajes.', style: TextStyle(fontSize: 10, color: Color(0xFF7E7489), height: 1.45))]))])); }
-Widget _settingsRow(BuildContext context, IconData icon, String title, String detail, VoidCallback onTap) => Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: InkWell(onTap: onTap, child: Row(children: [Icon(icon, color: eShokPurple), const SizedBox(width: 11), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), Text(detail, style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296)))])), const Icon(Icons.chevron_right, color: Color(0xFF9C91A8))]))));
+class _SettingsPageState extends State<SettingsPage> {
+  final shop = TextEditingController();
+  final warranty = TextEditingController();
+  bool loaded = false;
+  late Future<Map<String, int>> _demoCounts;
+
+  @override
+  void initState() {
+    super.initState();
+    _demoCounts = widget.store.demoDataCounts();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!loaded) _load();
+  }
+
+  Future<void> _load() async {
+    shop.text = await widget.store.setting('shop_name', fallback: 'eShokFix');
+    warranty.text = await widget.store.setting('default_warranty_days', fallback: '30');
+    if (mounted) setState(() => loaded = true);
+  }
+
+  Future<void> _removeDemoData() async {
+    final counts = await widget.store.demoDataCounts();
+    final total = counts.values.fold<int>(0, (sum, value) => sum + value);
+    if (total == 0) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No quedan registros de demostración por retirar.')),
+      );
+      return;
+    }
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Retirar datos de demostración'),
+        content: Text(
+          'Se retirarán ${counts['clients']} clientes, ${counts['orders']} órdenes y ${counts['items']} artículos marcados como demo. Los registros reales vinculados se conservarán. Esta acción no se puede deshacer.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB65E69)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Retirar datos demo'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await widget.store.removeDemoData();
+      if (!mounted) return;
+      setState(() => _demoCounts = widget.store.demoDataCounts());
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Datos de demostración retirados. Tus registros reales se conservaron.')),
+      );
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudieron retirar los datos demo: $e')),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    shop.dispose();
+    warranty.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PageFrame(
+    child: ListView(children: [
+      const SectionHeading('Configuración', subtitle: 'Identidad y reglas generales'),
+      const SizedBox(height: 13),
+      GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Datos del taller', style: TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 9),
+        TextField(controller: shop, decoration: const InputDecoration(labelText: 'Nombre comercial')),
+        const SizedBox(height: 8),
+        TextField(controller: warranty, keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Garantía predeterminada (días)')),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: loaded ? () async {
+            final days = int.tryParse(warranty.text.trim());
+            if (shop.text.trim().isEmpty || days == null || days < 0 || days > 3650) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Revisa el nombre del taller y los días de garantía (0 a 3650).')),
+              );
+              return;
+            }
+            await widget.store.saveSetting('shop_name', shop.text.trim());
+            await widget.store.saveSetting('default_warranty_days', days.toString());
+            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Configuración guardada localmente.')),
+            );
+          } : null,
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Guardar cambios'),
+        ),
+      ])),
+      const SizedBox(height: 10),
+      GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Datos de demostración', style: TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 5),
+        const Text(
+          'La primera instalación incluye registros ficticios para probar la aplicación. Retíralos antes de empezar a operar con clientes reales.',
+          style: TextStyle(fontSize: 10, color: Color(0xFF7E7489), height: 1.4),
+        ),
+        const SizedBox(height: 9),
+        FutureBuilder<Map<String, int>>(
+          future: _demoCounts,
+          builder: (context, snap) {
+            if (!snap.hasData) return const LinearProgressIndicator();
+            final data = snap.data!;
+            return Text(
+              'Clientes: ${data['clients']}  ·  Órdenes: ${data['orders']}  ·  Artículos: ${data['items']}',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _removeDemoData,
+          icon: const Icon(Icons.cleaning_services_outlined),
+          label: const Text('Retirar datos de demostración'),
+        ),
+      ])),
+      const SizedBox(height: 10),
+      _settingsRow(context, Icons.people_outline, 'Usuarios y roles', 'Catálogo local de perfiles', () => widget.open('usuarios')),
+      _settingsRow(context, Icons.notifications_active_outlined, 'Eventos de WhatsApp', 'Solo recepción, listo y entrega', () => widget.open('whatsapp')),
+      _settingsRow(context, Icons.vpn_key_outlined, 'Licenciamiento', 'Conexión con servidor pendiente', () => widget.open('licencias')),
+      const SizedBox(height: 12),
+      GlassCard(child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Política de comunicación', style: TextStyle(fontWeight: FontWeight.w800)),
+        SizedBox(height: 6),
+        Text(
+          'El flujo previsto genera únicamente tres eventos automáticos: recepción del equipo, equipo listo para recoger y comprobante con garantía al registrar la entrega. Los estados internos no disparan mensajes.',
+          style: TextStyle(fontSize: 10, color: Color(0xFF7E7489), height: 1.45),
+        ),
+      ])),
+    ]),
+  );
+}
 
 class WhatsAppEventsPage extends StatefulWidget { const WhatsAppEventsPage({super.key, required this.store}); final LocalStore store; @override State<WhatsAppEventsPage> createState() => _WhatsAppEventsPageState(); }
 class _WhatsAppEventsPageState extends State<WhatsAppEventsPage> { late Future<List<Map<String, Object?>>> _future; @override void initState() { super.initState(); _future = widget.store.whatsappEvents(); } @override Widget build(BuildContext context) => PageFrame(child: Column(children: [const SectionHeading('Eventos de WhatsApp', subtitle: 'Registro local de los tres avisos autorizados'), const SizedBox(height: 10), GlassCard(child: const Text('Estos registros todavía no envían mensajes. La integración con WhatsApp Business Platform requiere configurar un número, credenciales, consentimiento y plantillas; la conversación normal del técnico permanece fuera de eShokFix.', style: TextStyle(fontSize: 10, color: Color(0xFF7D7389), height: 1.4))), const SizedBox(height: 10), Expanded(child: FutureBuilder<List<Map<String, Object?>>>(future: _future, builder: (context, snap) { if (!snap.hasData) return const Center(child: CircularProgressIndicator()); final rows = snap.data!; if (rows.isEmpty) return const EmptyState(title: 'Sin eventos', message: 'Al recibir, marcar listo o entregar un expediente aparecerán aquí.'); return ListView.builder(itemCount: rows.length, itemBuilder: (_, i) { final e = rows[i]; return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.chat_bubble_outline, color: eShokPurple), const SizedBox(width: 8), Expanded(child: Text(_str(e['event_type']), style: const TextStyle(fontWeight: FontWeight.w800))), const Text('PENDIENTE', style: TextStyle(fontSize: 8, color: Color(0xFFB47A2C), fontWeight: FontWeight.w900))]), const SizedBox(height: 5), Text('${_str(e['folio'])} · ${_str(e['client_name'])}', style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))), const SizedBox(height: 7), Text(_str(e['message']), style: const TextStyle(fontSize: 11))]))); }); }))])); }
@@ -968,6 +1135,21 @@ class _SupplierDialogState extends State<SupplierDialog> {
   );
 }
 
+class _PurchaseLineDraft {
+  _PurchaseLineDraft({required this.itemId, required double initialCost})
+      : quantity = TextEditingController(text: '1'),
+        unitCost = TextEditingController(text: initialCost.toStringAsFixed(2));
+
+  int itemId;
+  final TextEditingController quantity;
+  final TextEditingController unitCost;
+
+  void dispose() {
+    quantity.dispose();
+    unitCost.dispose();
+  }
+}
+
 class PurchaseDialog extends StatefulWidget {
   const PurchaseDialog({super.key, required this.store});
   final LocalStore store;
@@ -978,10 +1160,8 @@ class PurchaseDialog extends StatefulWidget {
 class _PurchaseDialogState extends State<PurchaseDialog> {
   List<Map<String, Object?>> _suppliers = [];
   List<Map<String, Object?>> _items = [];
+  final List<_PurchaseLineDraft> _lines = [];
   int? _supplierId;
-  int? _itemId;
-  final quantity = TextEditingController(text: '1');
-  final unitCost = TextEditingController(text: '0');
   final discount = TextEditingController(text: '0');
   final paid = TextEditingController(text: '0');
   final notes = TextEditingController();
@@ -1003,24 +1183,69 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
       _suppliers = suppliers;
       _items = items;
       _supplierId = suppliers.isEmpty ? null : suppliers.first['id'] as int;
-      _itemId = items.isEmpty ? null : items.first['id'] as int;
-      if (_items.isNotEmpty) unitCost.text = _str(_items.first['cost'], '0');
+      if (items.isNotEmpty) {
+        _lines.add(_PurchaseLineDraft(
+          itemId: items.first['id'] as int,
+          initialCost: _num(items.first['cost']),
+        ));
+      }
       loading = false;
     });
   }
 
   @override
   void dispose() {
-    for (final c in [quantity, unitCost, discount, paid, notes]) {
-      c.dispose();
+    for (final line in _lines) {
+      line.dispose();
     }
+    discount.dispose();
+    paid.dispose();
+    notes.dispose();
     super.dispose();
   }
 
-  double _value(TextEditingController c) => double.tryParse(c.text.trim()) ?? -1;
+  double _value(TextEditingController controller) =>
+      double.tryParse(controller.text.trim()) ?? -1;
+
+  double get _subtotal => _lines.fold<double>(0, (sum, line) {
+    final qty = double.tryParse(line.quantity.text.trim()) ?? 0;
+    final cost = double.tryParse(line.unitCost.text.trim()) ?? 0;
+    return sum + PurchaseAccounting.lineTotal(qty, cost);
+  });
+
+  void _addLine() {
+    if (_items.isEmpty) return;
+    setState(() => _lines.add(_PurchaseLineDraft(
+      itemId: _items.first['id'] as int,
+      initialCost: _num(_items.first['cost']),
+    )));
+  }
+
+  void _removeLine(int index) {
+    if (_lines.length <= 1) return;
+    setState(() {
+      _lines.removeAt(index).dispose();
+    });
+  }
+
+  void _changeItem(_PurchaseLineDraft line, int? itemId) {
+    if (itemId == null) return;
+    Map<String, Object?>? selected;
+    for (final candidate in _items) {
+      if (candidate['id'] == itemId) {
+        selected = candidate;
+        break;
+      }
+    }
+    if (selected == null) return;
+    setState(() {
+      line.itemId = itemId;
+      line.unitCost.text = _num(selected!['cost']).toStringAsFixed(2);
+    });
+  }
 
   Future<void> _save() async {
-    if (_supplierId == null || _itemId == null) {
+    if (_supplierId == null || _items.isEmpty || _lines.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Primero registra un proveedor y al menos un artículo de inventario.'),
       ));
@@ -1030,11 +1255,11 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
     try {
       await widget.store.createPurchase(
         supplierId: _supplierId!,
-        items: [{
-          'item_id': _itemId!,
-          'quantity': _value(quantity),
-          'unit_cost': _value(unitCost),
-        }],
+        items: _lines.map((line) => <String, Object?>{
+          'item_id': line.itemId,
+          'quantity': _value(line.quantity),
+          'unit_cost': _value(line.unitCost),
+        }).toList(),
         discount: _value(discount),
         paid: _value(paid),
         paymentMethod: paymentMethod,
@@ -1054,17 +1279,10 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
     if (loading) return const AlertDialog(content: SizedBox(
       height: 90, child: Center(child: CircularProgressIndicator()),
     ));
-    Map<String, Object?>? selectedItem;
-    for (final candidate in _items) {
-      if (candidate['id'] == _itemId) {
-        selectedItem = candidate;
-        break;
-      }
-    }
     return AlertDialog(
       scrollable: true,
       title: const Text('Registrar compra'),
-      content: SizedBox(width: 440, child: Column(mainAxisSize: MainAxisSize.min, children: [
+      content: SizedBox(width: 460, child: Column(mainAxisSize: MainAxisSize.min, children: [
         DropdownButtonFormField<int>(
           initialValue: _supplierId,
           isExpanded: true,
@@ -1074,35 +1292,47 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
           )).toList(),
           onChanged: (v) => setState(() => _supplierId = v),
         ),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<int>(
-          initialValue: _itemId,
-          isExpanded: true,
-          decoration: const InputDecoration(labelText: 'Artículo que ingresa'),
-          items: _items.map((i) => DropdownMenuItem(
-            value: i['id'] as int,
-            child: Text('${_str(i['name'])} · stock ${_num(i['stock']).toStringAsFixed(0)}', overflow: TextOverflow.ellipsis),
-          )).toList(),
-          onChanged: (v) {
-            setState(() {
-              _itemId = v;
-              Map<String, Object?>? selected;
-              for (final candidate in _items) {
-                if (candidate['id'] == v) {
-                  selected = candidate;
-                  break;
-                }
-              }
-              if (selected != null) unitCost.text = _str(selected['cost'], '0');
-            });
-          },
+        const SizedBox(height: 12),
+        Row(children: [
+          const Expanded(child: Text('Artículos recibidos', style: TextStyle(fontWeight: FontWeight.w800))),
+          TextButton.icon(onPressed: _items.isEmpty ? null : _addLine,
+            icon: const Icon(Icons.add, size: 17), label: const Text('Agregar artículo')),
+        ]),
+        if (_items.isEmpty) const EmptyState(
+          title: 'Inventario vacío',
+          message: 'Crea primero los artículos que vas a recibir en Inventario.',
         ),
-        const SizedBox(height: 8),
-        _field(quantity, 'Cantidad recibida', required: true, number: true),
-        const SizedBox(height: 8),
-        _field(unitCost, 'Costo unitario', required: true, number: true),
-        const SizedBox(height: 8),
-        _field(discount, 'Descuento', number: true),
+        ..._lines.asMap().entries.map((entry) {
+          final index = entry.key;
+          final line = entry.value;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [
+                Expanded(child: DropdownButtonFormField<int>(
+                  initialValue: line.itemId,
+                  isExpanded: true,
+                  decoration: InputDecoration(labelText: 'Artículo ${index + 1}'),
+                  items: _items.map((item) => DropdownMenuItem(
+                    value: item['id'] as int,
+                    child: Text(_str(item['name']), overflow: TextOverflow.ellipsis),
+                  )).toList(),
+                  onChanged: (value) => _changeItem(line, value),
+                )),
+                IconButton(onPressed: _lines.length <= 1 ? null : () => _removeLine(index),
+                  icon: const Icon(Icons.delete_outline), tooltip: 'Quitar partida'),
+              ]),
+              const SizedBox(height: 6),
+              Row(children: [
+                Expanded(child: _field(line.quantity, 'Cantidad', required: true, number: true)),
+                const SizedBox(width: 8),
+                Expanded(child: _field(line.unitCost, 'Costo unitario', required: true, number: true)),
+              ]),
+            ]),
+          );
+        }),
+        const Divider(),
+        _field(discount, 'Descuento global', number: true),
         const SizedBox(height: 8),
         _field(paid, 'Pago inicial al proveedor', number: true),
         const SizedBox(height: 8),
@@ -1115,18 +1345,20 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
         ),
         const SizedBox(height: 8),
         _field(notes, 'Notas / referencia'),
-        if (selectedItem != null) Padding(
-          padding: const EdgeInsets.only(top: 10),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Existencia actual: ${_num(selectedItem['stock']).toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 11, color: Color(0xFF81778D))),
-          ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            Text('Subtotal: ${_money(_subtotal)}', style: const TextStyle(fontSize: 11)),
+            Text('Total estimado: ${_money(PurchaseAccounting.total(_subtotal, double.tryParse(discount.text) ?? 0))}',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: eShokPurple)),
+          ]),
         ),
       ])),
       actions: [
         TextButton(onPressed: saving ? null : () => Navigator.pop(context, false), child: const Text('Cancelar')),
-        FilledButton(onPressed: saving ? null : _save, child: Text(saving ? 'Guardando…' : 'Registrar compra')),
+        FilledButton(onPressed: saving || _lines.isEmpty || _supplierId == null ? null : _save,
+          child: Text(saving ? 'Guardando…' : 'Registrar compra')),
       ],
     );
   }
