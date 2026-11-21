@@ -174,4 +174,72 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test('repair parts require customer authorization and consumed stock is not restored on cancellation', () async {
+    final clientId = await store.saveClient(name: 'Cliente autorización');
+    final itemId = await store.saveInventoryItem(
+      name: 'Centro de carga',
+      sku: 'TEST-CHARGE',
+      stock: 2,
+      cost: 30,
+      price: 90,
+    );
+    final orderId = await store.createOrder(
+      clientId: clientId,
+      brand: 'Motorola',
+      model: 'G54',
+      failure: 'No carga',
+      condition: 'Equipo íntegro',
+      accessories: 'Equipo solamente',
+      technician: 'Técnico',
+      labor: 150,
+    );
+
+    await expectLater(
+      store.addOrderPart(orderId, itemId, 1),
+      throwsA(isA<StateError>()),
+    );
+    var inventory = await store.inventory(query: 'Centro de carga');
+    expect(inventory.single['stock'], 2);
+
+    await store.setOrderStatus(orderId, 'DIAGNOSTICO');
+    await store.setOrderStatus(orderId, 'ESPERA_AUTORIZACION');
+    await store.authorizeOrder(
+      orderId,
+      authorizedBy: 'Cliente autorización',
+      method: 'WHATSAPP',
+      note: 'Presupuesto aprobado',
+    );
+    await store.addOrderPart(orderId, itemId, 1);
+
+    inventory = await store.inventory(query: 'Centro de carga');
+    expect(inventory.single['stock'], 1);
+    var order = await store.order(orderId);
+    expect((order!['parts_total'] as num).toDouble(), 90);
+    expect((order['total'] as num).toDouble(), 240);
+
+    await expectLater(
+      store.addOrderPart(orderId, itemId, 2),
+      throwsA(isA<StateError>()),
+    );
+    inventory = await store.inventory(query: 'Centro de carga');
+    expect(inventory.single['stock'], 1);
+
+    await store.addOrderPayment(orderId, 100, 'EFECTIVO');
+    await store.cancelOrder(
+      orderId,
+      refundMethod: 'EFECTIVO',
+      reason: 'El cliente decidió no continuar',
+    );
+    inventory = await store.inventory(query: 'Centro de carga');
+    expect(inventory.single['stock'], 1);
+    order = await store.order(orderId);
+    expect(order!['status'], 'CANCELADO');
+    expect((order['paid'] as num).toDouble(), 0);
+    expect((order['refunded_total'] as num).toDouble(), 100);
+    final refunds = await store.orderRefunds(orderId);
+    expect(refunds, hasLength(1));
+    expect(refunds.single['amount'], 100);
+  });
+
 }
