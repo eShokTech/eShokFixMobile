@@ -12,6 +12,23 @@ part 'local_store/sales.dart';
 part 'local_store/purchase_receiving.dart';
 part 'local_store/finance_admin.dart';
 
+Future<void> _recordInventoryMovement(
+  DatabaseExecutor db,
+  int itemId,
+  double quantity,
+  String type,
+  String reason,
+  String createdAt,
+) async {
+  await db.insert('inventory_movements', {
+    'item_id': itemId,
+    'movement_type': type,
+    'quantity': quantity.abs(),
+    'reason': reason,
+    'created_at': createdAt,
+  });
+}
+
 
 Future<void> _createOrderRefundTable(DatabaseExecutor db) async {
   await db.execute('''CREATE TABLE IF NOT EXISTS order_refunds(

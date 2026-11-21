@@ -26,7 +26,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
     int itemId;
     if (id == null) {
       itemId = await db.insert('inventory_items', {...data, 'stock': stock});
-      if (stock > 0) await _inventoryMovement(itemId, stock, 'IN', 'Existencia inicial');
+      if (stock > 0) await _recordInventoryMovement(db, itemId, stock, 'IN', 'Existencia inicial', now);
       await _audit('inventory_item', itemId, 'CREATE', name.trim());
     } else {
       final exists = await db.query('inventory_items', columns: ['id'],
