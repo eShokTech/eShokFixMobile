@@ -65,7 +65,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'whatsapp' || 'licencias' => 'users.manage',
       _ => 'dashboard.view',
     };
-    return AuthService.can(authUser.role, permission);
+    return AuthService.can(widget.authUser.role, permission);
   }
 
   void _open(String view) {
@@ -105,7 +105,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'whatsapp' => WhatsAppEventsPage(store: widget.store),
       'licencias' => const LicensePage(),
       'compras' => PurchasesPage(store: widget.store),
-      _ => MorePage(open: _open),
+      _ => MorePage(open: _open, role: widget.authUser.role),
     };
     return Scaffold(
       appBar: AppBar(
@@ -121,7 +121,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
           ),
           Padding(
             padding: const EdgeInsets.only(left: 4),
-            child: Center(child: Text(authUser.displayName, style: const TextStyle(fontSize: 10, color: Color(0xFF746A80)))),
+            child: Center(child: Text(widget.authUser.displayName, style: const TextStyle(fontSize: 10, color: Color(0xFF746A80)))),
           ),
           IconButton(tooltip: 'Cerrar sesión', onPressed: onLogout, icon: const Icon(Icons.logout, color: eShokPurple)),
           const SizedBox(width: 6),
@@ -351,7 +351,7 @@ class MorePage extends StatelessWidget {
       if (AuthService.can(role, 'users.manage')) _moduleTile(context, 'Licencias', 'Servidor de validación', Icons.vpn_key_outlined, 'licencias', open),
     ]),
     const SizedBox(height: 15),
-    GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Estado de esta beta', style: TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 9), _statusLine(Icons.check_circle, 'Datos locales SQLite', 'Activo'), _statusLine(Icons.check_circle, 'Clientes, órdenes e inventario', 'Operativos'), _statusLine(Icons.check_circle, 'POS, caja, garantías y reportes', 'Operación local'), _statusLine(Icons.pending_outlined, 'Sincronización con PC', 'Pendiente'), _statusLine(Icons.pending_outlined, 'Servidor de licencias', 'Pendiente'), _statusLine(Icons.pending_outlined, 'WhatsApp Cloud API', 'Pendiente de configuración')])),
+    GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Estado de esta beta', style: TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 9), _statusLine(Icons.check_circle, 'Datos locales SQLite', 'Activo'), _statusLine(Icons.check_circle, 'Clientes, órdenes e inventario', 'Operativos'), _statusLine(Icons.check_circle, 'POS, caja, garantías y reportes', 'Operación local'), _statusLine(Icons.pending_outlined, 'Servidor propio de sincronización', 'Pendiente'), _statusLine(Icons.pending_outlined, 'Servidor de licencias', 'Pendiente'), _statusLine(Icons.pending_outlined, 'WhatsApp Cloud API', 'Pendiente de configuración')])),
   ]));
 }
 Widget _moduleTile(BuildContext context, String title, String sub, IconData icon, String view, ValueChanged<String> open) => InkWell(onTap: () => open(view), borderRadius: BorderRadius.circular(18), child: GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Container(width: 40, height: 40, decoration: BoxDecoration(color: eShokPurpleLight.withValues(alpha: .3), borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: eShokPurple)), const Spacer(), Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)), const SizedBox(height: 3), Text(sub, style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296)))])));
