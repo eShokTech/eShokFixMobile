@@ -26,6 +26,6 @@ También se incluye `CREAR_APK_DESDE_AQUI.bat` como alternativa para compilar de
 
 ## Estado de esta beta
 
-Incluye base local SQLite y módulos de prueba para inicio, clientes, órdenes/expedientes, evidencia, pagos, inventario, POS básico, caja, garantías, reportes y configuración.
+Incluye base local SQLite y módulos para inicio, clientes, órdenes/expedientes, evidencia, historial de pagos, inventario, POS básico, caja, garantías, reportes, proveedores y compras con entrada de existencias y pagos parciales.
 
-Aún no están conectados el servidor de datos de PC, sincronización real, login/RBAC comercial, servidor de licencias ni WhatsApp Cloud API. Los perfiles de usuario y eventos de WhatsApp que aparecen en esta beta son demostrativos/locales.
+Aún no están conectados el servidor de datos de PC ni la sincronización real. Usuarios y roles siguen siendo un catálogo local, no autenticación/RBAC de producción. Tampoco están conectados el servidor de licencias ni WhatsApp Cloud API. La compra registra varias partidas de artículos ya existentes en el inventario; el flujo de órdenes de compra con recepción parcial y devoluciones aún requiere una fase posterior. Los perfiles de usuario y eventos de WhatsApp que aparecen en esta beta son demostrativos/locales.
