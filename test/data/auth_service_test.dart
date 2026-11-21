@@ -16,6 +16,8 @@ void main() {
       expect(AuthService.can('TECNICO', 'cash.view'), isFalse);
       expect(AuthService.can('TECNICO', 'sales.manage'), isFalse);
       expect(AuthService.can('TECNICO', 'users.manage'), isFalse);
+      expect(AuthService.can('TECNICO', 'orders.cancel'), isFalse);
+      expect(AuthService.can('TECNICO', 'clients.delete'), isFalse);
     });
 
     test('cashier can collect and sell but cannot edit workshop or inventory', () {
@@ -26,6 +28,7 @@ void main() {
       expect(AuthService.can('CAJA', 'orders.manage'), isFalse);
       expect(AuthService.can('CAJA', 'inventory.manage'), isFalse);
       expect(AuthService.can('CAJA', 'purchases.manage'), isFalse);
+      expect(AuthService.can('CAJA', 'orders.cancel'), isFalse);
     });
 
     test('unknown roles are denied by default', () {
