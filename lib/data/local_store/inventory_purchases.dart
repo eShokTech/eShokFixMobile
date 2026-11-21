@@ -110,13 +110,29 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
       'email': email.trim(), 'tax_id': taxId.trim(), 'address': address.trim(),
       'notes': notes.trim(), 'updated_at': now,
     };
-    final supplierId = id == null
-        ? await db.insert('suppliers', {...data, 'created_at': now})
-        : id;
-    if (id != null) await db.update('suppliers', data, where: 'id=?', whereArgs: [id]);
-    await _audit('supplier', supplierId, id == null ? 'CREATE' : 'UPDATE', name.trim());
-    await _outbox('supplier', supplierId, id == null ? 'CREATE' : 'UPDATE', data);
-    return supplierId;
+    return db.transaction((tx) async {
+      late final int supplierId;
+      if (id == null) {
+        supplierId = await tx.insert('suppliers', {...data, 'created_at': now});
+      } else {
+        final exists = await tx.query('suppliers', columns: ['id'],
+          where: 'id=?', whereArgs: [id], limit: 1);
+        if (exists.isEmpty) throw StateError('Proveedor no encontrado.');
+        supplierId = id;
+        await tx.update('suppliers', data, where: 'id=?', whereArgs: [id]);
+      }
+      await tx.insert('audit_log', {
+        'entity': 'supplier', 'entity_id': supplierId,
+        'action': id == null ? 'CREATE' : 'UPDATE',
+        'detail': name.trim(), 'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'supplier', 'entity_id': supplierId,
+        'operation': id == null ? 'CREATE' : 'UPDATE',
+        'payload': jsonEncode(data), 'created_at': now,
+      });
+      return supplierId;
+    });
   }
 
   Future<List<Map<String, Object?>>> purchases({String query = ''}) async {

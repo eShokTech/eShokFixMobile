@@ -44,11 +44,29 @@ extension LocalStoreWorkshopOperations on LocalStore {
   }
 
   Future<void> deleteClient(int id) async {
-    final orderCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM service_orders WHERE client_id=?', [id])) ?? 0;
-    if (orderCount > 0) throw StateError('Este cliente tiene expedientes. No se puede eliminar; conserva su historial.');
-    await db.delete('devices', where: 'client_id=?', whereArgs: [id]);
-    await db.delete('clients', where: 'id=?', whereArgs: [id]);
-    await _audit('client', id, 'DELETE', 'Cliente eliminado');
+    await db.transaction((tx) async {
+      final client = await tx.query('clients', columns: ['id', 'name'],
+        where: 'id=?', whereArgs: [id], limit: 1);
+      if (client.isEmpty) throw StateError('Cliente no encontrado.');
+      final orderCount = Sqflite.firstIntValue(await tx.rawQuery(
+        'SELECT COUNT(*) FROM service_orders WHERE client_id=?', [id],
+      )) ?? 0;
+      if (orderCount > 0) throw StateError('Este cliente tiene expedientes. No se puede eliminar; conserva su historial.');
+      final salesCount = Sqflite.firstIntValue(await tx.rawQuery(
+        'SELECT COUNT(*) FROM sales WHERE client_id=?', [id],
+      )) ?? 0;
+      if (salesCount > 0) throw StateError('Este cliente tiene ventas vinculadas. Conserva su historial.');
+      await tx.delete('devices', where: 'client_id=?', whereArgs: [id]);
+      await tx.delete('clients', where: 'id=?', whereArgs: [id]);
+      await tx.insert('audit_log', {
+        'entity': 'client', 'entity_id': id, 'action': 'DELETE',
+        'detail': 'Cliente eliminado · ${client.first['name']}', 'created_at': _now(),
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'client', 'entity_id': id, 'operation': 'DELETE',
+        'payload': jsonEncode({'id': id}), 'created_at': _now(),
+      });
+    });
   }
 
   Future<List<Map<String, Object?>>> clientDevices(int clientId) => db.query('devices', where: 'client_id=?', whereArgs: [clientId], orderBy: 'id DESC');
@@ -302,6 +320,11 @@ extension LocalStoreWorkshopOperations on LocalStore {
     if (authorizedBy.trim().isEmpty) {
       throw ArgumentError('Registra quién autorizó el servicio.');
     }
+    const methods = {'PRESENCIAL', 'LLAMADA', 'WHATSAPP', 'OTRO'};
+    final normalizedMethod = method.trim().toUpperCase();
+    if (!methods.contains(normalizedMethod)) {
+      throw ArgumentError('Selecciona un medio de autorización válido.');
+    }
     final now = _now();
     await db.transaction((tx) async {
       final rows = await tx.query(
@@ -319,21 +342,21 @@ extension LocalStoreWorkshopOperations on LocalStore {
         'authorization_status': 'APPROVED',
         'authorized_at': now,
         'authorized_by': authorizedBy.trim(),
-        'authorization_method': method,
+        'authorization_method': normalizedMethod,
         'authorization_note': note.trim(),
       }, where: 'id=?', whereArgs: [id]);
       await tx.insert('order_events', {
         'order_id': id,
         'from_status': 'ESPERA_AUTORIZACION',
         'to_status': 'ESPERA_AUTORIZACION',
-        'description': 'Autorización del cliente registrada · ${authorizedBy.trim()} · $method',
+        'description': 'Autorización del cliente registrada · ${authorizedBy.trim()} · $normalizedMethod',
         'created_at': now,
       });
       await tx.insert('audit_log', {
         'entity': 'service_order',
         'entity_id': id,
         'action': 'CUSTOMER_AUTHORIZED',
-        'detail': '${authorizedBy.trim()} · $method · ${note.trim()}',
+        'detail': '${authorizedBy.trim()} · $normalizedMethod · ${note.trim()}',
         'created_at': now,
       });
       await tx.insert('sync_outbox', {
@@ -342,7 +365,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
         'operation': 'CUSTOMER_AUTHORIZED',
         'payload': jsonEncode({
           'authorized_by': authorizedBy.trim(),
-          'method': method,
+          'method': normalizedMethod,
           'note': note.trim(),
           'authorized_at': now,
         }),
@@ -353,10 +376,32 @@ extension LocalStoreWorkshopOperations on LocalStore {
 
   Future<void> updateDiagnosis(int id, String diagnosis, String notes) async {
     final now = _now();
-    await db.update('service_orders', {'diagnosis': diagnosis.trim(), 'notes': notes.trim()}, where: 'id=?', whereArgs: [id]);
-    await db.insert('order_events', {'order_id': id, 'from_status': null, 'to_status': null, 'description': 'Diagnóstico o notas actualizadas', 'created_at': now});
-    await _audit('service_order', id, 'DIAGNOSIS_UPDATE', diagnosis);
-    await _outbox('service_order', id, 'DIAGNOSIS_UPDATE', {'diagnosis': diagnosis, 'notes': notes});
+    await db.transaction((tx) async {
+      final rows = await tx.query('service_orders',
+        columns: ['status'], where: 'id=?', whereArgs: [id], limit: 1);
+      if (rows.isEmpty) throw StateError('Orden no encontrada.');
+      if (const {'ENTREGADO', 'CANCELADO'}.contains(rows.first['status'])) {
+        throw StateError('No se puede modificar el diagnóstico de una orden cerrada.');
+      }
+      await tx.update('service_orders', {
+        'diagnosis': diagnosis.trim(), 'notes': notes.trim(),
+      }, where: 'id=?', whereArgs: [id]);
+      await tx.insert('order_events', {
+        'order_id': id, 'from_status': null, 'to_status': null,
+        'description': 'Diagnóstico o notas actualizadas', 'created_at': now,
+      });
+      await tx.insert('audit_log', {
+        'entity': 'service_order', 'entity_id': id,
+        'action': 'DIAGNOSIS_UPDATE', 'detail': diagnosis.trim(),
+        'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'service_order', 'entity_id': id,
+        'operation': 'DIAGNOSIS_UPDATE',
+        'payload': jsonEncode({'diagnosis': diagnosis.trim(), 'notes': notes.trim()}),
+        'created_at': now,
+      });
+    });
   }
 
   Future<void> setOrderStatus(int id, String next, {String note = ''}) async {
