@@ -78,6 +78,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   bool _setupRequired = false;
   Object? _error;
   Timer? _sessionTimer;
+  bool _isForeground = true;
 
   @override
   void initState() {
@@ -85,7 +86,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _auth = AuthService(widget.store.db);
     _sessionTimer = Timer.periodic(const Duration(minutes: 5), (_) {
-      if (_user != null) _validateSessionOnResume();
+      if (_isForeground && _user != null) _validateSessionOnResume();
     });
     _restore();
   }
@@ -107,7 +108,8 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _user != null) {
+    _isForeground = state == AppLifecycleState.resumed;
+    if (_isForeground && _user != null) {
       _validateSessionOnResume();
     }
   }
