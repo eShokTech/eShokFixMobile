@@ -110,6 +110,11 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
 
   Future<void> _touchSession() async {
     if (_user == null) return;
+    if (!widget.store.registerActivity()) {
+      await _auth.logout();
+      if (mounted) setState(() => _user = null);
+      return;
+    }
     try {
       await _auth.touchSession();
     } catch (_) {
