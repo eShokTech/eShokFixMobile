@@ -1,7 +1,6 @@
 part of '../local_store.dart';
 
-extension LocalStoreFinanceAdminOperations on LocalStore {
-  Future<Map<String, double>> cashSummary() async {
+extension LocalStoreFinanceAdminOperations on LocalStore {  Future<Map<String, double>> cashSummary() async {
     requirePermission('cash.view');
     
     
@@ -26,7 +25,6 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
       'digital_expense': (electronicRows.first['expense'] as num).toDouble(),
     };
   }
-
   Future<void> addCashMovement({ 
     required bool income,
     required double amount,
@@ -57,7 +55,6 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
       'concept': concept.trim(), 'payment_method': normalizedMethod,
     });
   }
-
   Future<void> closeCashCut(double counted, String notes) async {
     requirePermission('cash.manage');
     
@@ -90,15 +87,11 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
       });
     });
   }
-
-  Future<List<Map<String, Object?>>> cashMovements() { return db.query('cash_movements', orderBy: 'id DESC', limit: 100); }
-    requirePermission('cash.view');
-  Future<List<Map<String, Object?>>> cashCuts() { return db.query('cash_cuts', orderBy: 'id DESC', limit: 30); }
-    requirePermission('cash.view');
-  Future<List<Map<String, Object?>>> warranties() { return db.rawQuery('''SELECT w.*, o.folio, c.name client_name, d.brand, d.model FROM warranties w
-    requirePermission('warranties.view');
+  Future<List<Map<String, Object?>>> cashMovements() {
+    requirePermission('cash.view'); return db.query('cash_movements', orderBy: 'id DESC', limit: 100); }  Future<List<Map<String, Object?>>> cashCuts() {
+    requirePermission('cash.view'); return db.query('cash_cuts', orderBy: 'id DESC', limit: 30); }  Future<List<Map<String, Object?>>> warranties() {
+    requirePermission('warranties.view'); return db.rawQuery('''SELECT w.*, o.folio, c.name client_name, d.brand, d.model FROM warranties w
     JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id LEFT JOIN devices d ON d.id=o.device_id ORDER BY w.id DESC'''); }
-
   Future<Map<String, double>> reportTotals() async {
     requirePermission('reports.view');
     
@@ -114,7 +107,6 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     final cash = await cashSummary();
     return {'orders_total': (orders.first['total'] as num).toDouble(), 'orders_paid': (orders.first['paid'] as num).toDouble(), 'orders_count': (orders.first['count'] as num).toDouble(), 'sales_total': (sales.first['total'] as num).toDouble(), 'sales_count': (sales.first['count'] as num).toDouble(), 'cash_balance': cash['balance'] ?? 0, 'digital_balance': cash['digital_balance'] ?? 0};
   }
-
   Future<String> setting(String key, {String fallback = ''}) async {
     requirePermission('settings.read');
     
@@ -122,18 +114,15 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
     final rows = await db.query('settings', columns: ['value'], where: 'key=?', whereArgs: [key], limit: 1);
     return rows.isEmpty ? fallback : rows.first['value'] as String;
-  }
-  Future<void> saveSetting(String key, String value) async {
+  }  Future<void> saveSetting(String key, String value) async {
     requirePermission('settings.manage');
     
     
 
     await db.insert('settings', {'key': key, 'value': value}, conflictAlgorithm: ConflictAlgorithm.replace);
   }
-
-  Future<List<Map<String, Object?>>> whatsappEvents() { return db.rawQuery('''SELECT w.*, o.folio, c.name client_name FROM whatsapp_events w JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id ORDER BY w.id DESC'''); }
-    requirePermission('users.manage');
-
+  Future<List<Map<String, Object?>>> whatsappEvents() {
+    requirePermission('users.manage'); return db.rawQuery('''SELECT w.*, o.folio, c.name client_name FROM whatsapp_events w JOIN service_orders o ON o.id=w.order_id JOIN clients c ON c.id=o.client_id ORDER BY w.id DESC'''); }
   Future<Map<String, int>> demoDataCounts() async {
     requirePermission('settings.manage');
     
@@ -152,7 +141,6 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
     ) ?? 0;
     return {'clients': clientsCount, 'orders': ordersCount, 'items': itemsCount};
   }
-
   Future<void> removeDemoData() async {
     requirePermission('settings.manage');
     
