@@ -76,7 +76,8 @@ extension LocalStorePurchaseReceivingOperations on LocalStore {
     final now = _now();
     await db.transaction((tx) async {
       final rows = await tx.rawQuery('''SELECT pi.*, i.stock,
-          p.folio, p.subtotal purchase_subtotal, p.total purchase_total, p.paid purchase_paid
+          p.folio, p.subtotal purchase_subtotal, p.discount purchase_discount,
+          p.total purchase_total, p.paid purchase_paid
         FROM purchase_items pi JOIN purchases p ON p.id=pi.purchase_id
         JOIN inventory_items i ON i.id=pi.item_id
         WHERE pi.id=? AND pi.purchase_id=?''', [purchaseItemId, purchaseId]);
@@ -89,11 +90,14 @@ extension LocalStorePurchaseReceivingOperations on LocalStore {
       final stock = (row['stock'] as num).toDouble();
       if (stock + 0.000001 < quantity) throw StateError('No hay existencias suficientes para devolver esta cantidad al proveedor.');
       final unitCost = (row['unit_cost'] as num).toDouble();
+      final originalSubtotal = (row['purchase_subtotal'] as num).toDouble();
+      final originalDiscount = (row['purchase_discount'] as num).toDouble();
+      final originalNetTotal = FinancialRules.money(originalSubtotal - originalDiscount);
       final amount = FinancialRules.saleLineRefund(
         quantity: quantity,
         unitPrice: unitCost,
-        saleSubtotal: (row['purchase_subtotal'] as num).toDouble(),
-        saleTotal: (row['purchase_total'] as num).toDouble(),
+        saleSubtotal: originalSubtotal,
+        saleTotal: originalNetTotal,
       );
       final oldTotal = (row['purchase_total'] as num).toDouble();
       final oldPaid = (row['purchase_paid'] as num).toDouble();

@@ -85,7 +85,7 @@ extension LocalStoreFinanceAdminOperations on LocalStore {
 
   Future<Map<String, double>> reportTotals() async {
     final orders = await db.rawQuery("SELECT COALESCE(SUM(total),0) total, COALESCE(SUM(paid),0) paid, COUNT(*) count FROM service_orders WHERE status!='CANCELADO'");
-    final sales = await db.rawQuery('SELECT COALESCE(SUM(total),0) total, COUNT(*) count FROM sales');
+    final sales = await db.rawQuery("SELECT COALESCE(SUM(total - COALESCE(refunded_total,0)),0) total, SUM(CASE WHEN status!='VOID' THEN 1 ELSE 0 END) count FROM sales");
     final cash = await cashSummary();
     return {'orders_total': (orders.first['total'] as num).toDouble(), 'orders_paid': (orders.first['paid'] as num).toDouble(), 'orders_count': (orders.first['count'] as num).toDouble(), 'sales_total': (sales.first['total'] as num).toDouble(), 'sales_count': (sales.first['count'] as num).toDouble(), 'cash_balance': cash['balance'] ?? 0, 'digital_balance': cash['digital_balance'] ?? 0};
   }

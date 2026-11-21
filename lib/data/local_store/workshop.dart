@@ -204,7 +204,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
     double quantity, {
     double? unitPrice,
   }) async {
-    if (quantity <= 0) throw ArgumentError('La cantidad debe ser mayor a cero.');
+    if (!quantity.isFinite || quantity <= 0) throw ArgumentError('La cantidad debe ser mayor a cero y válida.');
     final now = _now();
     await db.transaction((tx) async {
       final orderRows = await tx.query(
@@ -234,12 +234,13 @@ extension LocalStoreWorkshopOperations on LocalStore {
       if (inventoryRows.isEmpty) throw StateError('Artículo de inventario no encontrado.');
       final inventoryItem = inventoryRows.first;
       final stock = (inventoryItem['stock'] as num).toDouble();
-      if (stock < quantity) throw StateError('Existencia insuficiente para esta refacción.');
+      if (stock + 0.000001 < quantity) throw StateError('Existencia insuficiente para esta refacción.');
 
       final cost = (inventoryItem['cost'] as num).toDouble();
       final price = unitPrice ?? (inventoryItem['price'] as num).toDouble();
-      if (price < 0) throw ArgumentError('El precio de venta no puede ser negativo.');
-      final lineTotal = OrderPartAccounting.lineTotal(quantity, price);
+      if (!price.isFinite || price < 0) throw ArgumentError('El precio de venta debe ser válido y no negativo.');
+      final normalizedPrice = FinancialRules.money(price);
+      final lineTotal = FinancialRules.money(OrderPartAccounting.lineTotal(quantity, normalizedPrice));
       final newPartsTotal = (orderRow['parts_total'] as num).toDouble() + lineTotal;
       final labor = (orderRow['labor'] as num).toDouble();
       final discount = (orderRow['discount'] as num).toDouble();
@@ -257,7 +258,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
         'description': inventoryItem['name'],
         'quantity': quantity,
         'unit_cost': cost,
-        'unit_price': price,
+        'unit_price': normalizedPrice,
         'line_total': lineTotal,
         'created_at': now,
       });
@@ -271,7 +272,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
         'related_order_id': orderId, 'created_at': now,
       });
       await tx.update('service_orders', {
-        'parts_total': newPartsTotal, 'total': newTotal,
+        'parts_total': FinancialRules.money(newPartsTotal), 'total': FinancialRules.money(newTotal),
       }, where: 'id=?', whereArgs: [orderId]);
       await tx.insert('audit_log', {
         'entity': 'service_order', 'entity_id': orderId,
@@ -285,7 +286,7 @@ extension LocalStoreWorkshopOperations on LocalStore {
         'payload': jsonEncode({
           'order_id': orderId, 'item_id': itemId,
           'quantity': quantity, 'unit_cost': cost,
-          'unit_price': price, 'line_total': lineTotal,
+          'unit_price': normalizedPrice, 'line_total': lineTotal,
         }),
         'created_at': now,
       });

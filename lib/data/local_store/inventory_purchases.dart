@@ -8,9 +8,9 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
 
   Future<int> saveInventoryItem({int? id, String sku = '', required String name, String category = 'General', double stock = 0, double minStock = 0, double cost = 0, double price = 0, String location = ''}) async {
     if (name.trim().isEmpty) throw ArgumentError('El nombre del artículo es obligatorio.');
-    if (!stock.isFinite || !minStock.isFinite || !cost.isFinite || !price.isFinite ||
+    if (![stock, minStock, cost, price].every((value) => value.isFinite) ||
         stock < 0 || minStock < 0 || cost < 0 || price < 0) {
-      throw ArgumentError('Existencia, mínimo, costo y precio deben ser importes válidos no negativos.');
+      throw ArgumentError('Existencia, mínimo, costo y precio deben ser valores válidos no negativos.');
     }
     final now = _now();
     final data = {
@@ -18,26 +18,55 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
       'name': name.trim(),
       'category': category.trim().isEmpty ? 'General' : category.trim(),
       'min_stock': minStock,
-      'cost': cost,
-      'price': price,
+      'cost': FinancialRules.money(cost),
+      'price': FinancialRules.money(price),
       'location': location.trim(),
       'updated_at': now,
     };
-    int itemId;
-    if (id == null) {
-      itemId = await db.insert('inventory_items', {...data, 'stock': stock});
-      if (stock > 0) await _recordInventoryMovement(db, itemId, stock, 'IN', 'Existencia inicial', now);
-      await _audit('inventory_item', itemId, 'CREATE', name.trim());
-    } else {
-      final exists = await db.query('inventory_items', columns: ['id'],
-        where: 'id=?', whereArgs: [id], limit: 1);
-      if (exists.isEmpty) throw StateError('Artículo de inventario no encontrado.');
-      await db.update('inventory_items', data, where: 'id=?', whereArgs: [id]);
-      itemId = id;
-      await _audit('inventory_item', itemId, 'UPDATE', name.trim());
-    }
-    await _outbox('inventory_item', itemId, id == null ? 'CREATE' : 'UPDATE', data);
-    return itemId;
+    return db.transaction((tx) async {
+      late final int itemId;
+      final creating = id == null;
+      if (creating) {
+        itemId = await tx.insert('inventory_items', {
+          ...data,
+          'stock': stock,
+        });
+        if (stock > 0) {
+          await _recordInventoryMovement(
+            tx, itemId, stock, 'IN', 'Existencia inicial', now,
+          );
+        }
+      } else {
+        final exists = await tx.query(
+          'inventory_items',
+          columns: ['id'],
+          where: 'id=?',
+          whereArgs: [id],
+          limit: 1,
+        );
+        if (exists.isEmpty) throw StateError('Artículo de inventario no encontrado.');
+        itemId = id;
+        await tx.update('inventory_items', data, where: 'id=?', whereArgs: [id]);
+      }
+      await tx.insert('audit_log', {
+        'entity': 'inventory_item',
+        'entity_id': itemId,
+        'action': creating ? 'CREATE' : 'UPDATE',
+        'detail': name.trim(),
+        'created_at': now,
+      });
+      await tx.insert('sync_outbox', {
+        'entity': 'inventory_item',
+        'entity_id': itemId,
+        'operation': creating ? 'CREATE' : 'UPDATE',
+        'payload': jsonEncode({
+          ...data,
+          if (creating) 'stock': stock,
+        }),
+        'created_at': now,
+      });
+      return itemId;
+    });
   }
 
   Future<void> adjustInventory(int itemId, double quantity, String reason) async {
@@ -142,11 +171,13 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
       });
     }
     subtotal = FinancialRules.money(subtotal);
-    if (discount > subtotal) throw ArgumentError('El descuento no puede superar el subtotal.');
-    final total = FinancialRules.money(PurchaseAccounting.total(subtotal, discount));
-    if (paid > total) throw ArgumentError('El pago inicial no puede superar el total de la compra.');
+    final normalizedDiscount = FinancialRules.money(discount);
+    final normalizedPaid = FinancialRules.money(paid);
+    if (normalizedDiscount > subtotal) throw ArgumentError('El descuento no puede superar el subtotal.');
+    final total = FinancialRules.money(PurchaseAccounting.total(subtotal, normalizedDiscount));
+    if (normalizedPaid > total) throw ArgumentError('El pago inicial no puede superar el total de la compra.');
     final tender = FinancialRules.normalizePayments(
-      total: paid, fallbackMethod: paymentMethod, payments: paymentBreakdown,
+      total: normalizedPaid, fallbackMethod: paymentMethod, payments: paymentBreakdown,
     );
     final storedMethod = tender.length > 1 ? 'MIXTO'
         : (tender.isEmpty ? paymentMethod : tender.first['method'] as String);
@@ -166,10 +197,10 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
         'folio': 'PENDING-${DateTime.now().microsecondsSinceEpoch}',
         'supplier_id': supplierId,
         'subtotal': subtotal,
-        'discount': discount,
+        'discount': normalizedDiscount,
         'total': total,
-        'paid': paid,
-        'payment_status': PurchaseAccounting.paymentStatus(total, paid),
+        'paid': normalizedPaid,
+        'payment_status': PurchaseAccounting.paymentStatus(total, normalizedPaid),
         'payment_method': storedMethod,
         'status': receiveImmediately ? 'RECEIVED' : 'ORDERED',
         'notes': notes.trim(),
@@ -233,8 +264,8 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
         'operation': 'CREATE',
         'payload': jsonEncode({
           'folio': folio, 'supplier_id': supplierId,
-          'subtotal': subtotal, 'discount': discount,
-          'total': total, 'paid': paid, 'status': receiveImmediately ? 'RECEIVED' : 'ORDERED',
+          'subtotal': subtotal, 'discount': normalizedDiscount,
+          'total': total, 'paid': normalizedPaid, 'status': receiveImmediately ? 'RECEIVED' : 'ORDERED',
           'payment_breakdown': tender, 'items': prepared,
         }),
         'created_at': now,
@@ -246,7 +277,12 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
   Future<void> recordPurchasePayment(
     int purchaseId, double amount, String method, {String reference = ''}
   ) async {
-    if (amount <= 0) throw ArgumentError('El pago debe ser mayor a cero.');
+    if (!amount.isFinite || amount <= 0) throw ArgumentError('El pago debe ser mayor a cero y válido.');
+    final normalizedMethod = method.trim().toUpperCase();
+    if (!FinancialRules.paymentMethods.contains(normalizedMethod)) {
+      throw ArgumentError('Selecciona un medio de pago válido.');
+    }
+    final normalizedAmount = FinancialRules.money(amount);
     final now = _now();
     await db.transaction((tx) async {
       final rows = await tx.query('purchases',
@@ -255,34 +291,34 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
       if (rows.isEmpty) throw StateError('Compra no encontrada.');
       final total = (rows.first['total'] as num).toDouble();
       final paid = (rows.first['paid'] as num).toDouble();
-      if (amount > PurchaseAccounting.balance(total, paid) + 0.01) {
+      if (normalizedAmount > PurchaseAccounting.balance(total, paid) + 0.000001) {
         throw StateError('El pago supera el saldo pendiente de la compra.');
       }
-      final newPaid = paid + amount;
+      final newPaid = FinancialRules.money(paid + normalizedAmount);
       await tx.update('purchases', {
         'paid': newPaid,
         'payment_status': PurchaseAccounting.paymentStatus(total, newPaid),
         'payment_method': method,
       }, where: 'id=?', whereArgs: [purchaseId]);
       await tx.insert('purchase_payments', {
-        'purchase_id': purchaseId, 'method': method, 'amount': amount,
+        'purchase_id': purchaseId, 'method': normalizedMethod, 'amount': normalizedAmount,
         'reference': reference.trim(), 'created_at': now,
       });
       await tx.insert('cash_movements', {
-        'movement_type': 'OUT', 'amount': amount,
+        'movement_type': 'OUT', 'amount': normalizedAmount,
         'concept': 'Abono a compra ${rows.first['folio']}',
-        'reference': reference.trim().isEmpty ? method : reference.trim(),
-        'payment_method': method, 'created_at': now,
+        'reference': reference.trim().isEmpty ? normalizedMethod : reference.trim(),
+        'payment_method': normalizedMethod, 'created_at': now,
       });
       await tx.insert('audit_log', {
         'entity': 'purchase', 'entity_id': purchaseId,
-        'action': 'PAYMENT', 'detail': '$amount · $method',
+        'action': 'PAYMENT', 'detail': '$normalizedAmount · $normalizedMethod',
         'created_at': now,
       });
       await tx.insert('sync_outbox', {
         'entity': 'purchase', 'entity_id': purchaseId,
         'operation': 'PAYMENT',
-        'payload': jsonEncode({'amount': amount, 'method': method, 'reference': reference}),
+        'payload': jsonEncode({'amount': normalizedAmount, 'method': normalizedMethod, 'reference': reference}),
         'created_at': now,
       });
     });
