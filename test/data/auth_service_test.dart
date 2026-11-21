@@ -13,6 +13,8 @@ void main() {
       expect(AuthService.can('TECNICO', 'orders.view'), isTrue);
       expect(AuthService.can('TECNICO', 'orders.manage'), isTrue);
       expect(AuthService.can('TECNICO', 'inventory.view'), isTrue);
+      expect(AuthService.can('TECNICO', 'orders.payments.view'), isTrue);
+      expect(AuthService.can('TECNICO', 'settings.read'), isTrue);
       expect(AuthService.can('TECNICO', 'cash.view'), isFalse);
       expect(AuthService.can('TECNICO', 'sales.manage'), isFalse);
       expect(AuthService.can('TECNICO', 'users.manage'), isFalse);
