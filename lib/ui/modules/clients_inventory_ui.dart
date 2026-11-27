@@ -101,7 +101,7 @@ class _InventoryPageState extends State<InventoryPage> {
           const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(_str(item['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
             const SizedBox(height: 3),
-            Text('${_str(item['sku'], 'Sin SKU')} · ${_str(item['category'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))),
+            Text('${_str(item['sku'], 'Sin SKU')} · ${_str(item['barcode'], 'Sin barras')} · ${_str(item['category'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))),
             const SizedBox(height: 4),
             Text('${_num(item['stock']).toStringAsFixed(0)} en existencia · ${_money(item['price'])}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: eShokInk)),
             if (metrics != null) ...[
@@ -129,6 +129,7 @@ class InventoryFormDialog extends StatefulWidget {
 }
 class _InventoryFormDialogState extends State<InventoryFormDialog> {
   late final sku = TextEditingController(text: _str(widget.item?['sku']));
+  late final barcode = TextEditingController(text: _str(widget.item?['barcode']));
   late final name = TextEditingController(text: _str(widget.item?['name']));
   late final category = TextEditingController(text: _str(widget.item?['category'], 'General'));
   late final stock = TextEditingController(text: _str(widget.item?['stock'], '0'));
@@ -141,7 +142,7 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
   String pricingMethod = ProductPricingRules.percentageProfit;
   final form = GlobalKey<FormState>();
   @override
-  void dispose() { for (final c in [sku,name,category,stock,minStock,cost,price,location,pricingValue,priceReason]) { c.dispose(); } super.dispose(); }
+  void dispose() { for (final c in [sku,barcode,name,category,stock,minStock,cost,price,location,pricingValue,priceReason]) { c.dispose(); } super.dispose(); }
   double val(TextEditingController c) => double.tryParse(c.text) ?? 0;
   double? get suggestedPrice {
     try {
@@ -163,7 +164,7 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
   };
   @override
   Widget build(BuildContext context) => AlertDialog(scrollable: true, title: Text(widget.item == null ? 'Nuevo artículo' : 'Editar artículo'), content: SizedBox(width: 420, child: SingleChildScrollView(child: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, children: [
-    _field(name, 'Nombre', required: true), const SizedBox(height: 8), Row(children: [Expanded(child: _field(sku, 'SKU / código')), const SizedBox(width: 8), Expanded(child: _field(category, 'Categoría'))]), const SizedBox(height: 8), Row(children: [Expanded(child: widget.item == null ? _field(stock, 'Existencia inicial', number: true) : InputDecorator(decoration: const InputDecoration(labelText: 'Existencia actual'), child: Text(_str(widget.item?['stock'], '0')))), const SizedBox(width: 8), Expanded(child: _field(minStock, 'Mínimo', number: true))]),
+    _field(name, 'Nombre', required: true), const SizedBox(height: 8), Row(children: [Expanded(child: _field(sku, 'SKU / código')), const SizedBox(width: 8), Expanded(child: _field(barcode, 'Código de barras'))]), const SizedBox(height: 8), _field(category, 'Categoría'), const SizedBox(height: 8), Row(children: [Expanded(child: widget.item == null ? _field(stock, 'Existencia inicial', number: true) : InputDecorator(decoration: const InputDecoration(labelText: 'Existencia actual'), child: Text(_str(widget.item?['stock'], '0')))), const SizedBox(width: 8), Expanded(child: _field(minStock, 'Mínimo', number: true))]),
     if (widget.item != null) const Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 4), child: Text('Para modificar existencias, registra un movimiento de inventario. Así se conserva el historial.', style: TextStyle(fontSize: 10, color: Color(0xFF81778D))))),
     const SizedBox(height: 8),
     Row(children: [Expanded(child: _field(cost, 'Costo', number: true, onChanged: (_) => setState(() {}))), const SizedBox(width: 8), Expanded(child: _field(price, 'Precio', number: true, onChanged: (_) => setState(() {})))]),
@@ -201,7 +202,7 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
     if (!form.currentState!.validate()) return;
     try {
       await widget.store.saveInventoryItem(
-        id: widget.item?['id'] as int?, sku: sku.text, name: name.text,
+        id: widget.item?['id'] as int?, sku: sku.text, barcode: barcode.text, name: name.text,
         category: category.text,
         stock: widget.item == null ? val(stock) : _num(widget.item?['stock']),
         minStock: val(minStock), cost: val(cost), price: val(price),
