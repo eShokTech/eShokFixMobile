@@ -142,7 +142,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'whatsapp' => WhatsAppEventsPage(store: widget.store),
       'licencias' => const LicensePage(),
       'compras' => PurchasesPage(store: widget.store),
-      'busqueda' => GlobalSearchPage(store: widget.store, open: _open, query: _globalSearchQuery),
+      'busqueda' => GlobalSearchPage(key: ValueKey(_globalSearchQuery), store: widget.store, open: _open, query: _globalSearchQuery),
       'notificaciones' => NotificationsPage(
         store: widget.store,
         open: _open,
