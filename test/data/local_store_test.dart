@@ -449,6 +449,17 @@ void main() {
       isTrue,
     );
 
+    final scannedProduct = await store.inventoryItemByCode('7501234567890');
+    expect(scannedProduct?['name'], 'Batería Global Search');
+
+    final skuProduct = await store.inventoryItemByCode('ESH-GLOBAL-2026');
+    expect(skuProduct?['name'], 'Batería Global Search');
+
+    await store.saveSetting('pos.accept_usd_cash', '1');
+    await store.saveSetting('pos.usd_exchange_rate', '17.5000');
+    expect(await store.setting('pos.accept_usd_cash'), '1');
+    expect(await store.setting('pos.usd_exchange_rate'), '17.5000');
+
     final demoResults = await store.globalSearch('Cliente de demostración');
     expect(demoResults.any((row) => row['type'] == 'CLIENTE'), isFalse);
   });
