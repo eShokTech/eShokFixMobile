@@ -57,7 +57,7 @@ class AuthService {
     },
     'CAJA': {
       'dashboard.view', 'clients.view', 'settings.read', 'orders.view', 'orders.pay', 'orders.payments.view',
-      'sales.view', 'sales.manage', 'cash.view', 'cash.manage',
+      'inventory.view', 'sales.view', 'sales.manage', 'cash.view', 'cash.manage',
       'warranties.view', 'reports.view',
     },
   };
