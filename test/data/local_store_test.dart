@@ -372,6 +372,7 @@ void main() {
     await store.saveInventoryItem(
       name: 'Batería Global Search',
       sku: 'ESH-GLOBAL-2026',
+      barcode: '7501234567890',
       stock: 8,
       minStock: 2,
       cost: 100,
@@ -411,6 +412,13 @@ void main() {
       deviceResults.any((row) =>
         row['type'] == 'EQUIPO' &&
         row['title'] == 'Samsung Galaxy A26 5G'),
+      isTrue,
+    );
+
+    final barcodeResults = await store.globalSearch('7501234567890');
+    expect(
+      barcodeResults.any((row) =>
+        row['type'] == 'PRODUCTO' && row['title'] == 'Batería Global Search'),
       isTrue,
     );
 
