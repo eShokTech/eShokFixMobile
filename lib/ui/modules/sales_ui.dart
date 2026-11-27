@@ -437,6 +437,12 @@ class _SaleCartPageState extends State<SaleCartPage> {
       ),
     );
     if (receipt == null || !mounted) return;
+    setState(() {
+      _cart.clear();
+      _clientId = null;
+      _discount.text = '0';
+      _search.clear();
+    });
     await Navigator.push<void>(
       context,
       MaterialPageRoute(builder: (_) => SaleSuccessPage(receipt: receipt)),
@@ -1046,9 +1052,7 @@ class SaleSuccessPage extends StatelessWidget {
   final _SaleReceipt receipt;
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: false,
-    child: Scaffold(
+  Widget build(BuildContext context) => Scaffold(
       appBar: AppBar(automaticallyImplyLeading: false, title: const Text('Venta completada')),
       body: SafeArea(
         child: Padding(
@@ -1113,8 +1117,7 @@ class SaleSuccessPage extends StatelessWidget {
           ),
         ),
       ),
-    ),
-  );
+    );
 }
 
 class BarcodeScannerPage extends StatefulWidget {
