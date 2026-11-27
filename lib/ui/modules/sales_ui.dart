@@ -759,12 +759,18 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
 
   double get _rate => _number(_exchangeRate.text);
   double get _receivedAmount => _number(_received.text);
-  double get _receivedInPesos =>
-      _method == 'EFECTIVO' && _cashCurrency == 'USD'
-          ? FinancialRules.money(_receivedAmount * _rate)
-          : FinancialRules.money(_receivedAmount);
-  double get _change => FinancialRules.money(
-    (_receivedInPesos - widget.total).clamp(0.0, double.infinity).toDouble(),
+  double get _receivedInPesos {
+    if (_isUsdCash && _rate <= 0) return 0;
+    return PosCheckoutRules.receivedInMxn(
+      amount: _receivedAmount,
+      currency: _isCash ? _cashCurrency : 'MXN',
+      exchangeRate: _isUsdCash ? _rate : 1,
+    );
+  }
+
+  double get _change => PosCheckoutRules.changeDue(
+    saleTotal: widget.total,
+    receivedInMxn: _receivedInPesos,
   );
   bool get _isCash => _method == 'EFECTIVO';
   bool get _isUsdCash => _isCash && _cashCurrency == 'USD';
@@ -794,7 +800,7 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
         );
         return;
       }
-      if (_receivedAmount <= 0 || _receivedInPesos + 0.0001 < widget.total) {
+      if (_receivedAmount <= 0 || !PosCheckoutRules.isSufficient(saleTotal: widget.total, receivedInMxn: _receivedInPesos)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('El efectivo recibido no cubre el total de la venta.')),
         );
