@@ -419,15 +419,57 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   }
   Future<void> _evidence() async {
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.camera, imageQuality: 82, maxWidth: 1600);
-    if (image == null) return;
+    final image = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 82,
+      maxWidth: 1600,
+    );
+    if (image == null || !mounted) return;
+
     final docs = await getApplicationDocumentsDirectory();
+    if (!mounted) return;
     final evidenceDir = Directory(p.join(docs.path, 'evidence'));
     await evidenceDir.create(recursive: true);
-    final safeCopy = await File(image.path).copy(p.join(evidenceDir.path, 'order_${widget.orderId}_${DateTime.now().microsecondsSinceEpoch}.jpg'));
+    if (!mounted) return;
+    final safeCopy = await File(image.path).copy(
+      p.join(
+        evidenceDir.path,
+        'order_${widget.orderId}_${DateTime.now().microsecondsSinceEpoch}.jpg',
+      ),
+    );
+    if (!mounted) return;
+
     final caption = TextEditingController();
-    final result = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Descripción de evidencia'), content: TextField(controller: caption, decoration: const InputDecoration(labelText: 'Ej. Estado al recibir, daño, reparación')), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Guardar foto'))]));
-    if (result == true) { await widget.store.addEvidence(widget.orderId, safeCopy.path, caption.text); if (mounted) setState(_refresh); }
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Descripción de evidencia'),
+          content: TextField(
+            controller: caption,
+            decoration: const InputDecoration(
+              labelText: 'Ej. Estado al recibir, daño, reparación',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Guardar foto'),
+            ),
+          ],
+        ),
+      );
+      if (result == true) {
+        await widget.store.addEvidence(widget.orderId, safeCopy.path, caption.text);
+        if (mounted) setState(_refresh);
+      }
+    } finally {
+      caption.dispose();
+    }
   }
   Future<void> _printTicket(Map<String, Object?> o) async {
     final shopName = await widget.store.setting('shop_name', fallback: 'eShokFix');
