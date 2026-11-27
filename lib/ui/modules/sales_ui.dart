@@ -265,22 +265,32 @@ class _SaleDialogState extends State<SaleDialog> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const AlertDialog(
-      content: SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
-    );
+    if (loading) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(28),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
 
-    final discountValue = double.tryParse(discount.text.trim().replaceAll(',', '.')) ?? 0;
+    final discountValue =
+        double.tryParse(discount.text.trim().replaceAll(',', '.')) ?? 0;
     final total = PurchaseAccounting.total(_subtotal, discountValue);
-    return AlertDialog(
-      scrollable: true,
-      title: Text(widget.embedded ? 'Punto de venta' : 'Nueva venta'),
-      content: SizedBox(width: 470, child: Column(mainAxisSize: MainAxisSize.min, children: [
+
+    final fields = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
         DropdownButtonFormField<int?>(
           initialValue: clientId,
           isExpanded: true,
           decoration: const InputDecoration(labelText: 'Cliente (opcional)'),
           items: [
-            const DropdownMenuItem<int?>(value: null, child: Text('Venta de mostrador')),
+            const DropdownMenuItem<int?>(
+              value: null,
+              child: Text('Venta de mostrador'),
+            ),
             ..._clients.map((client) => DropdownMenuItem<int?>(
               value: client['id'] as int,
               child: Text(_str(client['name']), overflow: TextOverflow.ellipsis),
@@ -288,60 +298,108 @@ class _SaleDialogState extends State<SaleDialog> {
           ],
           onChanged: (value) => setState(() => clientId = value),
         ),
-        const SizedBox(height: 12),
-        Row(children: [
-          const Expanded(child: Text('Productos y servicios', style: TextStyle(fontWeight: FontWeight.w800))),
-          TextButton.icon(
-            onPressed: _addLine,
-            icon: const Icon(Icons.add, size: 17),
-            label: const Text('Agregar'),
-          ),
-        ]),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Productos y servicios',
+                style: TextStyle(fontWeight: FontWeight.w800, color: eShokInk),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: _addLine,
+              icon: const Icon(Icons.add, size: 17),
+              label: const Text('Agregar'),
+            ),
+          ],
+        ),
         ..._lines.asMap().entries.map((entry) {
           final index = entry.key;
           final line = entry.value;
           return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Row(children: [
-                Expanded(child: DropdownButtonFormField<int?>(
-                  initialValue: line.itemId,
-                  isExpanded: true,
-                  decoration: InputDecoration(labelText: 'Artículo ${index + 1}'),
-                  items: [
-                    const DropdownMenuItem<int?>(value: null, child: Text('Servicio / venta libre')),
-                    ..._items.map((item) => DropdownMenuItem<int?>(
-                      value: item['id'] as int,
-                      child: Text('${_str(item['name'])} · ${_num(item['stock']).toStringAsFixed(0)} disp.',
-                        overflow: TextOverflow.ellipsis),
-                    )),
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<int?>(
+                        initialValue: line.itemId,
+                        isExpanded: true,
+                        decoration: InputDecoration(labelText: 'Artículo ${index + 1}'),
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('Servicio / venta libre'),
+                          ),
+                          ..._items.map((item) => DropdownMenuItem<int?>(
+                            value: item['id'] as int,
+                            child: Text(
+                              '${_str(item['name'])} · ${_num(item['stock']).toStringAsFixed(0)} disp.',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          )),
+                        ],
+                        onChanged: (value) => _selectItem(line, value),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _lines.length <= 1 ? null : () => _removeLine(index),
+                      icon: const Icon(Icons.delete_outline),
+                      tooltip: 'Quitar partida',
+                    ),
                   ],
-                  onChanged: (value) => _selectItem(line, value),
-                )),
-                IconButton(
-                  onPressed: _lines.length <= 1 ? null : () => _removeLine(index),
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: 'Quitar partida',
                 ),
-              ]),
-              const SizedBox(height: 6),
-              _field(line.description, 'Descripción', required: true),
-              const SizedBox(height: 6),
-              Row(children: [
-                Expanded(child: _field(line.quantity, 'Cantidad', required: true, number: true, onChanged: (_) => setState(() {}))),
-                const SizedBox(width: 8),
-                Expanded(child: _field(line.unitPrice, 'Precio unitario', required: true, number: true, onChanged: (_) => setState(() {}))),
-              ]),
-            ]),
+                const SizedBox(height: 8),
+                _field(line.description, 'Descripción', required: true),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _field(
+                        line.quantity,
+                        'Cantidad',
+                        required: true,
+                        number: true,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _field(
+                        line.unitPrice,
+                        'Precio unitario',
+                        required: true,
+                        number: true,
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           );
         }),
-        const Divider(),
-        _field(discount, 'Descuento global', number: true, onChanged: (_) => setState(() {})),
-        const SizedBox(height: 8),
+        const Divider(height: 24),
+        _field(
+          discount,
+          'Descuento global',
+          number: true,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 10),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Dividir el pago', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-          subtitle: const Text('Permite cobrar una parte en cada medio', style: TextStyle(fontSize: 10)),
+          title: const Text(
+            'Dividir el pago',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          subtitle: const Text(
+            'Permite cobrar una parte en cada medio',
+            style: TextStyle(fontSize: 10),
+          ),
           value: splitPayment,
           onChanged: (value) => setState(() {
             splitPayment = value;
@@ -350,48 +408,146 @@ class _SaleDialogState extends State<SaleDialog> {
         ),
         DropdownButtonFormField<String>(
           initialValue: method,
+          isExpanded: true,
           decoration: const InputDecoration(labelText: 'Primer medio de pago'),
           items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
-            .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+              .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+              .toList(),
           onChanged: (value) => setState(() => method = value ?? method),
         ),
         if (splitPayment) ...[
+          const SizedBox(height: 10),
+          _field(splitAmount, 'Importe segundo pago', number: true),
           const SizedBox(height: 8),
-          Row(children: [
-            Expanded(child: _field(splitAmount, 'Importe segundo pago', number: true)),
-            const SizedBox(width: 8),
-            Expanded(child: DropdownButtonFormField<String>(
-              initialValue: secondPaymentMethod,
-              decoration: const InputDecoration(labelText: 'Segundo medio'),
-              items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
-                .map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
-              onChanged: (value) => setState(() => secondPaymentMethod = value ?? secondPaymentMethod),
-            )),
-          ]),
+          DropdownButtonFormField<String>(
+            initialValue: secondPaymentMethod,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'Segundo medio'),
+            items: const ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA', 'OTRO']
+                .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                .toList(),
+            onChanged: (value) => setState(
+              () => secondPaymentMethod = value ?? secondPaymentMethod,
+            ),
+          ),
           Align(
             alignment: Alignment.centerRight,
-            child: Text('Primer pago: ${_money(total - (double.tryParse(splitAmount.text.replaceAll(',', '.')) ?? 0))}',
-              style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+            child: Text(
+              'Primer pago: ${_money(total - (double.tryParse(splitAmount.text.replaceAll(',', '.')) ?? 0))}',
+              style: const TextStyle(fontSize: 10, color: Color(0xFF81778D)),
+            ),
           ),
         ],
-        const SizedBox(height: 8),
+        const SizedBox(height: 10),
         _field(notes, 'Notas / referencia'),
-        const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text('Subtotal: ${_money(_subtotal)}', style: const TextStyle(fontSize: 11)),
-            Text('Total: ${_money(total)}',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: eShokPurple)),
-          ]),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: eShokPurpleLight.withValues(alpha: .22),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Subtotal: ${_money(_subtotal)}',
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+                    const SizedBox(height: 3),
+                    const Text('Total a cobrar',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+              Text(
+                _money(total),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: eShokPurple,
+                ),
+              ),
+            ],
+          ),
         ),
-      ])),
+        const SizedBox(height: 14),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: saving ? null : _save,
+            icon: saving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.point_of_sale_outlined),
+            label: Text(saving ? 'Procesando…' : 'Cobrar venta'),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 15),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (widget.embedded) {
+      return GlassCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: eShokPurpleLight.withValues(alpha: .32),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: const Icon(Icons.point_of_sale_outlined, color: eShokPurple),
+                ),
+                const SizedBox(width: 11),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Punto de venta',
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          color: eShokInk,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Registra productos, servicios y cobra',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF81778D)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            fields,
+          ],
+        ),
+      );
+    }
+
+    return AlertDialog(
+      scrollable: true,
+      title: const Text('Nueva venta'),
+      content: SizedBox(width: 470, child: fields),
       actions: [
-        if (!widget.embedded)
-          TextButton(onPressed: saving ? null : () => Navigator.pop(context, false), child: const Text('Cancelar')),
-        FilledButton(
-          onPressed: saving ? null : _save,
-          child: Text(saving ? 'Procesando…' : 'Cobrar venta'),
+        TextButton(
+          onPressed: saving ? null : () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
         ),
       ],
     );
