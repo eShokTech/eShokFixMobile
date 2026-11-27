@@ -51,17 +51,19 @@ class _SalesPageState extends State<SalesPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(_str(item['name']),
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 8),
-              Text('Código: ${_str(item['barcode'], _str(item['sku'], code))}',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF81778D))),
-              const SizedBox(height: 14),
-              Text(_money(item['price']),
-                style: const TextStyle(fontSize: 30, color: eShokPurple, fontWeight: FontWeight.w900)),
-              const SizedBox(height: 4),
-              Text('Existencia: ${_num(item['stock']).toStringAsFixed(0)}',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+              Text(
+                _str(item['name']),
+                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _money(item['price']),
+                style: const TextStyle(
+                  fontSize: 32,
+                  color: eShokPurple,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
             ],
           ),
           actions: [
