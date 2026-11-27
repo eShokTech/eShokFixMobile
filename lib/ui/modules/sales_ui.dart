@@ -445,7 +445,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
     });
     await Navigator.push<void>(
       context,
-      MaterialPageRoute(builder: (_) => SaleSuccessPage(receipt: receipt)),
+      MaterialPageRoute(builder: (_) => _SaleSuccessPage(receipt: receipt)),
     );
     if (mounted) Navigator.pop(context, true);
   }
@@ -886,7 +886,6 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
 
   @override
   Widget build(BuildContext context) {
-    final entered = _isCash ? _receivedAmount : widget.total;
     final shortfall = _isCash
         ? FinancialRules.money((widget.total - _receivedInPesos).clamp(0.0, double.infinity).toDouble())
         : 0.0;
@@ -1053,8 +1052,8 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
   }
 }
 
-class SaleSuccessPage extends StatelessWidget {
-  const SaleSuccessPage({super.key, required this.receipt});
+class _SaleSuccessPage extends StatelessWidget {
+  const _SaleSuccessPage({super.key, required this.receipt});
   final _SaleReceipt receipt;
 
   @override
