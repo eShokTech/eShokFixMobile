@@ -1079,7 +1079,7 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
 }
 
 class _SaleSuccessPage extends StatelessWidget {
-  const _SaleSuccessPage({super.key, required this.receipt});
+  const _SaleSuccessPage({required this.receipt});
   final _SaleReceipt receipt;
 
   @override
