@@ -88,6 +88,34 @@ void main() {
     expect(await store.saleReturns(saleId), hasLength(2));
   });
 
+  test('POS checkout stores transfer reference on payment and cash ledger', () async {
+    final saleId = await store.createSaleCart(
+      items: [
+        {
+          'description': 'Servicio de diagnóstico',
+          'quantity': 1,
+          'unit_price': 250,
+        },
+      ],
+      paymentMethod: 'TRANSFERENCIA',
+      paymentBreakdown: [
+        {'method': 'TRANSFERENCIA', 'amount': 250},
+      ],
+      paymentReference: 'SPEI-ESHK-2026-001',
+    );
+
+    final payments = await store.salePayments(saleId);
+    expect(payments, hasLength(1));
+    expect(payments.single['reference'], 'SPEI-ESHK-2026-001');
+
+    final movements = await store.cashMovements();
+    final saleMovement = movements.firstWhere(
+      (row) => row['related_sale_id'] == saleId,
+    );
+    expect(saleMovement['reference'], 'SPEI-ESHK-2026-001');
+    expect(saleMovement['payment_method'], 'TRANSFERENCIA');
+  });
+
   test('purchase order receipts only increase stock as goods physically arrive', () async {
     final supplierId = await store.saveSupplier(name: 'Proveedor de prueba');
     final itemId = await store.saveInventoryItem(
