@@ -12,6 +12,8 @@ extension LocalStoreEcosystemOperations on LocalStore {
     final term = query.trim();
     if (term.length < 2) return [];
     final pattern = '%${term}%';
+    final compactTerm = term.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+    final compactPattern = '%${compactTerm}%';
     final safeLimit = limit.clamp(1, 50).toInt();
     final results = <Map<String, Object?>>[];
 
@@ -40,11 +42,25 @@ extension LocalStoreEcosystemOperations on LocalStore {
                d.created_at sort_date
         FROM devices d JOIN clients c ON c.id=d.client_id
         WHERE COALESCE(c.is_demo,0)=0
-          AND (COALESCE(d.brand,'') LIKE ? OR COALESCE(d.model,'') LIKE ?
-            OR COALESCE(d.imei,'') LIKE ? OR COALESCE(d.serial,'') LIKE ?
-            OR c.name LIKE ? COLLATE NOCASE)
+          AND (
+            COALESCE(d.brand,'') LIKE ? COLLATE NOCASE
+            OR COALESCE(d.model,'') LIKE ? COLLATE NOCASE
+            OR COALESCE(d.imei,'') LIKE ?
+            OR COALESCE(d.serial,'') LIKE ?
+            OR COALESCE(d.color,'') LIKE ? COLLATE NOCASE
+            OR COALESCE(d.accessories,'') LIKE ? COLLATE NOCASE
+            OR COALESCE(d.condition_note,'') LIKE ? COLLATE NOCASE
+            OR COALESCE(d.notes,'') LIKE ? COLLATE NOCASE
+            OR c.name LIKE ? COLLATE NOCASE
+            OR REPLACE(REPLACE(REPLACE(UPPER(COALESCE(d.brand,'') || COALESCE(d.model,'')), '-', ''), ' ', ''), '.', '') LIKE ?
+            OR REPLACE(REPLACE(REPLACE(UPPER(COALESCE(d.imei,'')), '-', ''), ' ', ''), '.', '') LIKE ?
+            OR REPLACE(REPLACE(REPLACE(UPPER(COALESCE(d.serial,'')), '-', ''), ' ', ''), '.', '') LIKE ?
+          )
         ORDER BY d.id DESC LIMIT ?
-      ''', [pattern, pattern, pattern, pattern, pattern]);
+      ''', [
+        pattern, pattern, pattern, pattern, pattern, pattern,
+        pattern, pattern, pattern, compactPattern, compactPattern, compactPattern,
+      ]);
     }
 
     if (AuthService.can(user.role, 'orders.view')) {
