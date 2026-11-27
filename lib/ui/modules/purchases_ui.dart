@@ -769,12 +769,14 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
                 method,
                 paymentBreakdown: breakdown,
               );
-              if (mounted) Navigator.pop(context, true);
-            } catch (e) {
-              if (mounted) {
-                setState(() => saving = false);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-              }
+              if (!context.mounted) return;
+              Navigator.pop(context, true);
+            } catch (error) {
+              if (!context.mounted) return;
+              setState(() => saving = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('$error')),
+              );
             }
           },
           child: Text(saving ? 'Guardando…' : 'Registrar abono'),
