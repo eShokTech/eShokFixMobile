@@ -29,7 +29,34 @@ class _ClientsPageState extends State<ClientsPage> {
         return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Row(children: [
           CircleAvatar(backgroundColor: eShokPurpleLight.withValues(alpha: .35), foregroundColor: eShokPurple, child: Text(_str(c['name'], '?').substring(0,1).toUpperCase())),
           const SizedBox(width: 11), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_str(c['name']), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(_str(c['phone'], 'Sin teléfono'), style: const TextStyle(fontSize: 10, color: Color(0xFF857B91))), const SizedBox(height: 5), Text('${c['device_count']} equipos · ${c['order_count']} servicios', style: const TextStyle(fontSize: 9, color: eShokPurple, fontWeight: FontWeight.w700))])),
-          if (_can('clients.manage') || _can('clients.delete')) PopupMenuButton<String>(onSelected: (v) async { if (v == 'edit') await _edit(c); if (v == 'delete') { try { await widget.store.deleteClient(c['id'] as int); if (mounted) setState(_refresh); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } } }, itemBuilder: (_) => [if (_can('clients.manage')) const PopupMenuItem(value: 'edit', child: Text('Editar')), if (_can('clients.delete')) const PopupMenuItem(value: 'delete', child: Text('Eliminar'))]),
+          if (_can('clients.manage') || _can('clients.delete'))
+            PopupMenuButton<String>(
+              onSelected: (value) async {
+                if (value == 'edit') {
+                  await _edit(c);
+                  return;
+                }
+                if (value == 'delete') {
+                  final messenger = ScaffoldMessenger.of(context);
+                  try {
+                    await widget.store.deleteClient(c['id'] as int);
+                    if (!mounted) return;
+                    setState(_refresh);
+                  } catch (error) {
+                    if (!mounted) return;
+                    messenger.showSnackBar(
+                      SnackBar(content: Text('$error')),
+                    );
+                  }
+                }
+              },
+              itemBuilder: (_) => [
+                if (_can('clients.manage'))
+                  const PopupMenuItem(value: 'edit', child: Text('Editar')),
+                if (_can('clients.delete'))
+                  const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+              ],
+            ),
         ])));
       });
     })),
