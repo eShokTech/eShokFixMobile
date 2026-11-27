@@ -192,6 +192,7 @@ class SettingsPage extends StatefulWidget { const SettingsPage({super.key, requi
 class _SettingsPageState extends State<SettingsPage> {
   final shop = TextEditingController();
   final warranty = TextEditingController();
+  final usdExchangeRate = TextEditingController();
   bool loaded = false;
   late Future<Map<String, int>> _demoCounts;
 
@@ -210,6 +211,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _load() async {
     shop.text = await widget.store.setting('shop_name', fallback: 'eShokFix');
     warranty.text = await widget.store.setting('default_warranty_days', fallback: '30');
+    usdExchangeRate.text = await widget.store.setting('pos.usd_exchange_rate', fallback: '');
     if (mounted) setState(() => loaded = true);
   }
 
@@ -309,6 +311,7 @@ class _SettingsPageState extends State<SettingsPage> {
   void dispose() {
     shop.dispose();
     warranty.dispose();
+    usdExchangeRate.dispose();
     super.dispose();
   }
 
@@ -324,18 +327,32 @@ class _SettingsPageState extends State<SettingsPage> {
         const SizedBox(height: 8),
         TextField(controller: warranty, keyboardType: TextInputType.number,
           decoration: const InputDecoration(labelText: 'Garantía predeterminada (días)')),
+        const SizedBox(height: 8),
+        TextField(
+          controller: usdExchangeRate,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(
+            labelText: 'Tipo de cambio predeterminado (MXN por USD)',
+            prefixText: r'$ ',
+            helperText: 'Se usa al cobrar en dólares desde el punto de venta. Déjalo vacío si no aceptas USD.',
+          ),
+        ),
         const SizedBox(height: 10),
         FilledButton.icon(
           onPressed: loaded ? () async {
             final days = int.tryParse(warranty.text.trim());
-            if (shop.text.trim().isEmpty || days == null || days < 0 || days > 3650) {
+            final rateText = usdExchangeRate.text.trim().replaceAll(',', '.');
+            final rate = rateText.isEmpty ? null : double.tryParse(rateText);
+            if (shop.text.trim().isEmpty || days == null || days < 0 || days > 3650 ||
+                (rateText.isNotEmpty && (rate == null || !rate.isFinite || rate <= 0))) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Revisa el nombre del taller y los días de garantía (0 a 3650).')),
+                const SnackBar(content: Text('Revisa nombre, garantía y tipo de cambio. La garantía debe ser 0 a 3650 días y el tipo de cambio mayor a cero.')),
               );
               return;
             }
             await widget.store.saveSetting('shop_name', shop.text.trim());
             await widget.store.saveSetting('default_warranty_days', days.toString());
+            await widget.store.saveSetting('pos.usd_exchange_rate', rate?.toStringAsFixed(4) ?? '');
             if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Configuración guardada localmente.')),
             );
