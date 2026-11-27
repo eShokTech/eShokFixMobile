@@ -724,6 +724,7 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
   String _method = 'EFECTIVO';
   String _cashCurrency = 'MXN';
   bool _saveRateAsDefault = false;
+  bool _acceptUsdCash = false;
   bool _saving = false;
   String _defaultRate = '';
 
@@ -735,14 +736,23 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
 
   Future<void> _loadDefaultRate() async {
     try {
-      final value = await widget.store.setting('pos.usd_exchange_rate');
+      final values = await Future.wait([
+        widget.store.setting('pos.usd_exchange_rate'),
+        widget.store.setting('pos.accept_usd_cash', fallback: '0'),
+      ]);
       if (!mounted) return;
       setState(() {
-        _defaultRate = value;
-        if (value.isNotEmpty) _exchangeRate.text = value;
+        _defaultRate = values[0];
+        _acceptUsdCash = values[1] == '1';
+        if (_defaultRate.isNotEmpty) _exchangeRate.text = _defaultRate;
+        if (!_acceptUsdCash) _cashCurrency = 'MXN';
       });
     } catch (_) {
-      // The exchange rate can still be entered manually for this payment.
+      if (!mounted) return;
+      setState(() {
+        _acceptUsdCash = false;
+        _cashCurrency = 'MXN';
+      });
     }
   }
 
@@ -930,11 +940,12 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
               const SizedBox(height: 7),
               SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'MXN', label: Text('Pesos MXN')),
-                  ButtonSegment(value: 'USD', label: Text('Dólares USD')),
+                segments: [
+                  const ButtonSegment(value: 'MXN', label: Text('Pesos MXN')),
+                  if (_acceptUsdCash)
+                    const ButtonSegment(value: 'USD', label: Text('Dólares USD')),
                 ],
-                selected: {_cashCurrency},
+                selected: {_acceptUsdCash ? _cashCurrency : 'MXN'},
                 onSelectionChanged: (value) => setState(() {
                   _cashCurrency = value.first;
                   _received.clear();
