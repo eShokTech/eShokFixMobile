@@ -91,9 +91,10 @@ extension LocalStoreEcosystemOperations on LocalStore {
         FROM inventory_items i
         WHERE COALESCE(i.is_demo,0)=0
           AND (i.name LIKE ? COLLATE NOCASE OR COALESCE(i.sku,'') LIKE ?
-            OR COALESCE(i.category,'') LIKE ? COLLATE NOCASE)
+            OR COALESCE(i.category,'') LIKE ? COLLATE NOCASE
+            OR COALESCE(i.barcode,'') LIKE ?)
         ORDER BY i.updated_at DESC LIMIT ?
-      ''', [pattern, pattern, pattern]);
+      ''', [pattern, pattern, pattern, pattern]);
     }
 
     if (AuthService.can(user.role, 'purchases.view')) {
