@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Official eShokFix product mark, shared by setup and the dashboard.
 class BrandLogo extends StatelessWidget {
