@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: eshokfix-mobile-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   verify-and-build:
@@ -30,19 +30,19 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.7'
+          flutter-version: '3.50.0'
           cache: true
 
       - name: Resolve packages
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze --no-pub --no-fatal-infos
+        run: flutter analyze --no-pub --fatal-infos
 
       - name: Tests
         run: flutter test --no-pub
