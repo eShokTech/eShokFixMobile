@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 const eShokPurple = Color(0xFF6C4AB6);
 const eShokPurpleLight = Color(0xFFCBB9E8);
