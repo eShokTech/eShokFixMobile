@@ -1,12 +1,37 @@
 part of '../local_store.dart';
 
 extension LocalStoreInventoryPurchaseOperations on LocalStore {
-  Future<List<Map<String, Object?>>> inventory({ String query = ''}) {
+  Future<List<Map<String, Object?>>> inventory({String query = ''}) {
     requirePermission('inventory.view');
-    final q = '%${query.trim()}%';
-    return db.rawQuery('SELECT * FROM inventory_items WHERE name LIKE ? OR COALESCE(sku,\'\') LIKE ? ORDER BY name COLLATE NOCASE', [q, q]);
+    final term = query.trim();
+    if (term.isEmpty) {
+      return db.rawQuery('SELECT * FROM inventory_items ORDER BY name COLLATE NOCASE');
+    }
+    final q = '%$term%';
+    final compact = term.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
+    final compactQ = '%$compact%';
+    return db.rawQuery('''
+      SELECT * FROM inventory_items
+      WHERE name LIKE ? COLLATE NOCASE
+        OR COALESCE(sku,'') LIKE ? COLLATE NOCASE
+        OR COALESCE(barcode,'') LIKE ?
+        OR REPLACE(REPLACE(REPLACE(UPPER(COALESCE(barcode,'')), '-', ''), ' ', ''), '.', '') LIKE ?
+      ORDER BY name COLLATE NOCASE
+    ''', [q, q, q, compactQ]);
   }
-  Future<int> saveInventoryItem({int? id, String sku = '', required String name, String category = 'General', double stock = 0, double minStock = 0, double cost = 0, double price = 0, String location = '', String priceChangeReason = ''}) async {
+  Future<Map<String, Object?>?> inventoryItemByCode(String code) async {
+    requirePermission('inventory.view');
+    final normalized = code.trim();
+    if (normalized.isEmpty) return null;
+    final rows = await db.rawQuery('''
+      SELECT * FROM inventory_items
+      WHERE barcode=? COLLATE NOCASE OR sku=? COLLATE NOCASE
+      ORDER BY CASE WHEN barcode=? THEN 0 ELSE 1 END
+      LIMIT 1
+    ''', [normalized, normalized, normalized]);
+    return rows.isEmpty ? null : rows.first;
+  }
+  Future<int> saveInventoryItem({int? id, String sku = '', required String name, String category = 'General', double stock = 0, double minStock = 0, double cost = 0, double price = 0, String location = '', String barcode = '', String priceChangeReason = ''}) async {
     requirePermission('inventory.manage');
     
     
@@ -21,6 +46,7 @@ extension LocalStoreInventoryPurchaseOperations on LocalStore {
     final now = _now();
     final data = {
       'sku': sku.trim().isEmpty ? null : sku.trim(),
+      'barcode': barcode.trim(),
       'name': name.trim(),
       'category': category.trim().isEmpty ? 'General' : category.trim(),
       'min_stock': minStock,
