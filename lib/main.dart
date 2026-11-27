@@ -19,6 +19,7 @@ class EShokFixMobileApp extends StatelessWidget {
       title: 'eShokFix',
       debugShowCheckedModeBanner: false,
       theme: buildEShokFixTheme(),
+      builder: (context, child) => MaterialUiCompatibilityBridge(child: child!),
       home: const StoreGate(),
     );
   }
