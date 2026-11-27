@@ -392,6 +392,28 @@ void main() {
       isTrue,
     );
 
+    final deviceClientId = await store.saveClient(
+      name: 'Cliente Equipo A26',
+      phone: '8997654321',
+    );
+    await store.db.insert('devices', {
+      'client_id': deviceClientId,
+      'brand': 'Samsung',
+      'model': 'Galaxy A26 5G',
+      'color': 'Negro',
+      'imei': '359111111111111',
+      'serial': 'A26-TEST-001',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+
+    final deviceResults = await store.globalSearch('A26');
+    expect(
+      deviceResults.any((row) =>
+        row['type'] == 'EQUIPO' &&
+        row['title'] == 'Samsung Galaxy A26 5G'),
+      isTrue,
+    );
+
     final demoResults = await store.globalSearch('Cliente de demostración');
     expect(demoResults.any((row) => row['type'] == 'CLIENTE'), isFalse);
   });
