@@ -198,6 +198,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final warranty = TextEditingController();
   final usdExchangeRate = TextEditingController();
   bool loaded = false;
+  bool acceptUsdCash = false;
   late Future<Map<String, int>> _demoCounts;
 
   @override
@@ -216,6 +217,7 @@ class _SettingsPageState extends State<SettingsPage> {
     shop.text = await widget.store.setting('shop_name', fallback: 'eShokFix');
     warranty.text = await widget.store.setting('default_warranty_days', fallback: '30');
     usdExchangeRate.text = await widget.store.setting('pos.usd_exchange_rate', fallback: '');
+    acceptUsdCash = await widget.store.setting('pos.accept_usd_cash', fallback: '0') == '1';
     if (mounted) setState(() => loaded = true);
   }
 
@@ -343,15 +345,29 @@ class _SettingsPageState extends State<SettingsPage> {
         TextField(controller: warranty, keyboardType: TextInputType.number,
           decoration: const InputDecoration(labelText: 'Garantía predeterminada (días)')),
         const SizedBox(height: 8),
-        TextField(
-          controller: usdExchangeRate,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(
-            labelText: 'Tipo de cambio predeterminado (MXN por USD)',
-            prefixText: r'$ ',
-            helperText: 'Se usa al cobrar en dólares desde el punto de venta. Déjalo vacío si no aceptas USD.',
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            'Aceptar dólares en caja',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
           ),
+          subtitle: const Text(
+            'Activa una opción USD en el cobro del punto de venta',
+            style: TextStyle(fontSize: 10, color: Color(0xFF81778D)),
+          ),
+          value: acceptUsdCash,
+          onChanged: (value) => setState(() => acceptUsdCash = value),
         ),
+        if (acceptUsdCash)
+          TextField(
+            controller: usdExchangeRate,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Tipo de cambio predeterminado (MXN por USD)',
+              prefixText: r'$ ',
+              helperText: 'Pesos mexicanos que equivalen a un dólar estadounidense.',
+            ),
+          ),
         const SizedBox(height: 10),
         FilledButton.icon(
           onPressed: loaded ? () async {
@@ -359,7 +375,8 @@ class _SettingsPageState extends State<SettingsPage> {
             final rateText = usdExchangeRate.text.trim().replaceAll(',', '.');
             final rate = rateText.isEmpty ? null : double.tryParse(rateText);
             if (shop.text.trim().isEmpty || days == null || days < 0 || days > 3650 ||
-                (rateText.isNotEmpty && (rate == null || !rate.isFinite || rate <= 0))) {
+                (rateText.isNotEmpty && (rate == null || !rate.isFinite || rate <= 0)) ||
+                (acceptUsdCash && (rate == null || !rate.isFinite || rate <= 0))) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Revisa nombre, garantía y tipo de cambio. La garantía debe ser 0 a 3650 días y el tipo de cambio mayor a cero.')),
               );
@@ -367,6 +384,7 @@ class _SettingsPageState extends State<SettingsPage> {
             }
             await widget.store.saveSetting('shop_name', shop.text.trim());
             await widget.store.saveSetting('default_warranty_days', days.toString());
+            await widget.store.saveSetting('pos.accept_usd_cash', acceptUsdCash ? '1' : '0');
             await widget.store.saveSetting('pos.usd_exchange_rate', rate?.toStringAsFixed(4) ?? '');
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
