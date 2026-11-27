@@ -278,6 +278,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _removeDemoData() async {
     final counts = await widget.store.demoDataCounts();
+    if (!mounted) return;
     final total = counts.values.fold<int>(0, (sum, value) => sum + value);
     if (total == 0) {
       if (mounted) {
