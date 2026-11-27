@@ -15,6 +15,7 @@ import 'package:flutter/services.dart';
 import '../domain/workflow.dart';
 import '../domain/financial_rules.dart';
 import '../domain/pricing_rules.dart';
+import '../domain/pos_checkout_rules.dart';
 import 'theme.dart';
 import 'brand_logo.dart';
 
