@@ -11,9 +11,9 @@ extension LocalStoreEcosystemOperations on LocalStore {
 
     final term = query.trim();
     if (term.length < 2) return [];
-    final pattern = '%${term}%';
+    final pattern = '%$term%';
     final compactTerm = term.replaceAll(RegExp(r'[^A-Za-z0-9]'), '').toUpperCase();
-    final compactPattern = '%${compactTerm}%';
+    final compactPattern = '%$compactTerm%';
     final safeLimit = limit.clamp(1, 50).toInt();
     final results = <Map<String, Object?>>[];
 

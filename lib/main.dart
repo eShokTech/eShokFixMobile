@@ -89,12 +89,14 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     try {
       final user = await _auth.restoreSession();
       final setup = user == null ? await _auth.needsInitialSetup() : false;
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _user = user;
         widget.store.setAuthenticatedUser(user);
         _setupRequired = setup;
         _loading = false;
       });
+      }
     } catch (error) {
       if (mounted) setState(() { _error = error; _loading = false; });
     }

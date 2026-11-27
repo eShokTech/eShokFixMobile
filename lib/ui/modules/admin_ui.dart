@@ -32,9 +32,11 @@ class _UsersPageState extends State<UsersPage> {
       );
       _refresh();
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$error')),
       );
+      }
     }
   }
 
@@ -62,9 +64,11 @@ class _UsersPageState extends State<UsersPage> {
       try {
         if (controller.text != confirm.text) throw ArgumentError('Las contraseñas no coinciden.');
         await _auth.resetPassword(user['id'] as int, controller.text);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Contraseña restablecida. Las sesiones anteriores fueron cerradas.')),
         );
+        }
       } catch (error) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
       }
@@ -173,7 +177,7 @@ class _UserDialogState extends State<UserDialog> {
       TextField(controller: password, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)], obscureText: true, decoration: const InputDecoration(labelText: 'PIN inicial de 6 dígitos')),
       const SizedBox(height: 8),
       DropdownButtonFormField<String>(
-        value: role,
+        initialValue: role,
         decoration: const InputDecoration(labelText: 'Rol'),
         items: const ['ADMIN','ENCARGADO','TECNICO','CAJA'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
         onChanged: (v) => setState(() => role = v ?? role),
@@ -219,13 +223,17 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final uri = await widget.store.exportBackup();
       if (uri == null) return;
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Copia de seguridad guardada en la ubicación elegida.')),
       );
+      }
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No se pudo crear la copia: $error')),
       );
+      }
     }
   }
 
@@ -260,9 +268,11 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       await SystemNavigator.pop();
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No se pudo restaurar la copia: $error')),
       );
+      }
     }
   }
 
@@ -270,9 +280,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final counts = await widget.store.demoDataCounts();
     final total = counts.values.fold<int>(0, (sum, value) => sum + value);
     if (total == 0) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No quedan registros de demostración por retirar.')),
       );
+      }
       return;
     }
     final confirm = await showDialog<bool>(
@@ -301,9 +313,11 @@ class _SettingsPageState extends State<SettingsPage> {
         const SnackBar(content: Text('Datos de demostración retirados. Tus registros reales se conservaron.')),
       );
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('No se pudieron retirar los datos demo: $e')),
       );
+      }
     }
   }
 
@@ -353,9 +367,11 @@ class _SettingsPageState extends State<SettingsPage> {
             await widget.store.saveSetting('shop_name', shop.text.trim());
             await widget.store.saveSetting('default_warranty_days', days.toString());
             await widget.store.saveSetting('pos.usd_exchange_rate', rate?.toStringAsFixed(4) ?? '');
-            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Configuración guardada localmente.')),
             );
+            }
           } : null,
           icon: const Icon(Icons.save_outlined),
           label: const Text('Guardar cambios'),
@@ -415,7 +431,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _settingsRow(context, Icons.notifications_active_outlined, 'Eventos de WhatsApp', 'Solo recepción, listo y entrega', () => widget.open('whatsapp')),
       _settingsRow(context, Icons.vpn_key_outlined, 'Licenciamiento', 'Conexión con servidor pendiente', () => widget.open('licencias')),
       const SizedBox(height: 12),
-      GlassCard(child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Política de comunicación', style: TextStyle(fontWeight: FontWeight.w800)),
         SizedBox(height: 6),
         Text(
@@ -456,6 +472,6 @@ Widget _settingsRow(
 );
 
 class WhatsAppEventsPage extends StatefulWidget { const WhatsAppEventsPage({super.key, required this.store}); final LocalStore store; @override State<WhatsAppEventsPage> createState() => _WhatsAppEventsPageState(); }
-class _WhatsAppEventsPageState extends State<WhatsAppEventsPage> { late Future<List<Map<String, Object?>>> _future; @override void initState() { super.initState(); _future = widget.store.whatsappEvents(); } @override Widget build(BuildContext context) => PageFrame(child: Column(children: [const SectionHeading('Eventos de WhatsApp', subtitle: 'Registro local de los tres avisos autorizados'), const SizedBox(height: 10), GlassCard(child: const Text('Estos registros todavía no envían mensajes. La integración con WhatsApp Business Platform requiere configurar un número, credenciales, consentimiento y plantillas; la conversación normal del técnico permanece fuera de eShokFix.', style: TextStyle(fontSize: 10, color: Color(0xFF7D7389), height: 1.4))), const SizedBox(height: 10), Expanded(child: FutureBuilder<List<Map<String, Object?>>>(future: _future, builder: (context, snap) { if (!snap.hasData) return const Center(child: CircularProgressIndicator()); final rows = snap.data!; if (rows.isEmpty) return const EmptyState(title: 'Sin eventos', message: 'Al recibir, marcar listo o entregar un expediente aparecerán aquí.'); return ListView.builder(itemCount: rows.length, itemBuilder: (_, i) { final e = rows[i]; return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.chat_bubble_outline, color: eShokPurple), const SizedBox(width: 8), Expanded(child: Text(_str(e['event_type']), style: const TextStyle(fontWeight: FontWeight.w800))), const Text('PENDIENTE', style: TextStyle(fontSize: 8, color: Color(0xFFB47A2C), fontWeight: FontWeight.w900))]), const SizedBox(height: 5), Text('${_str(e['folio'])} · ${_str(e['client_name'])}', style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))), const SizedBox(height: 7), Text(_str(e['message']), style: const TextStyle(fontSize: 11))]))); }); }))])); }
+class _WhatsAppEventsPageState extends State<WhatsAppEventsPage> { late Future<List<Map<String, Object?>>> _future; @override void initState() { super.initState(); _future = widget.store.whatsappEvents(); } @override Widget build(BuildContext context) => PageFrame(child: Column(children: [const SectionHeading('Eventos de WhatsApp', subtitle: 'Registro local de los tres avisos autorizados'), const SizedBox(height: 10), const GlassCard(child: Text('Estos registros todavía no envían mensajes. La integración con WhatsApp Business Platform requiere configurar un número, credenciales, consentimiento y plantillas; la conversación normal del técnico permanece fuera de eShokFix.', style: TextStyle(fontSize: 10, color: Color(0xFF7D7389), height: 1.4))), const SizedBox(height: 10), Expanded(child: FutureBuilder<List<Map<String, Object?>>>(future: _future, builder: (context, snap) { if (!snap.hasData) return const Center(child: CircularProgressIndicator()); final rows = snap.data!; if (rows.isEmpty) return const EmptyState(title: 'Sin eventos', message: 'Al recibir, marcar listo o entregar un expediente aparecerán aquí.'); return ListView.builder(itemCount: rows.length, itemBuilder: (_, i) { final e = rows[i]; return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [const Icon(Icons.chat_bubble_outline, color: eShokPurple), const SizedBox(width: 8), Expanded(child: Text(_str(e['event_type']), style: const TextStyle(fontWeight: FontWeight.w800))), const Text('PENDIENTE', style: TextStyle(fontSize: 8, color: Color(0xFFB47A2C), fontWeight: FontWeight.w900))]), const SizedBox(height: 5), Text('${_str(e['folio'])} · ${_str(e['client_name'])}', style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))), const SizedBox(height: 7), Text(_str(e['message']), style: const TextStyle(fontSize: 11))]))); }); }))])); }
 
-class LicensePage extends StatelessWidget { const LicensePage({super.key}); @override Widget build(BuildContext context) => PageFrame(child: ListView(children: [const SectionHeading('Licenciamiento', subtitle: 'Servidor eShokFix License Server'), const SizedBox(height: 12), GlassCard(gradient: const LinearGradient(colors: [Color(0xFFF3ECFB), Colors.white]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Icon(Icons.vpn_key_outlined, color: eShokPurple, size: 35), const SizedBox(height: 9), const Text('Modo de prueba local', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)), const SizedBox(height: 5), const Text('La validación de licencia todavía no está conectada. Esta compilación no activa ni simula una licencia comercial.', style: TextStyle(fontSize: 11, color: Color(0xFF7E7489), height: 1.4)), const SizedBox(height: 11), const StatusChip(status: 'ESPERA_AUTORIZACION') ])), const SizedBox(height: 12), GlassCard(child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Arquitectura prevista', style: TextStyle(fontWeight: FontWeight.w800)), SizedBox(height: 7), Text('La app consultará una dirección HTTPS fija. El servidor de licencias correrá como servicio independiente en la PC del local y emitirá autorizaciones firmadas. El teléfono conservará una autorización local con vencimiento y política de gracia. El descubrimiento remoto y el túnel seguro se configurarán después de comprobar el acceso de red del local.', style: TextStyle(fontSize: 10, color: Color(0xFF7E7489), height: 1.45))]))])); }
+class LicensePage extends StatelessWidget { const LicensePage({super.key}); @override Widget build(BuildContext context) => PageFrame(child: ListView(children: const [SectionHeading('Licenciamiento', subtitle: 'Servidor eShokFix License Server'), SizedBox(height: 12), GlassCard(gradient: LinearGradient(colors: [Color(0xFFF3ECFB), Colors.white]), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Icon(Icons.vpn_key_outlined, color: eShokPurple, size: 35), SizedBox(height: 9), Text('Modo de prueba local', style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900)), SizedBox(height: 5), Text('La validación de licencia todavía no está conectada. Esta compilación no activa ni simula una licencia comercial.', style: TextStyle(fontSize: 11, color: Color(0xFF7E7489), height: 1.4)), SizedBox(height: 11), StatusChip(status: 'ESPERA_AUTORIZACION') ])), SizedBox(height: 12), GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Arquitectura prevista', style: TextStyle(fontWeight: FontWeight.w800)), SizedBox(height: 7), Text('La app consultará una dirección HTTPS fija. El servidor de licencias correrá como servicio independiente en la PC del local y emitirá autorizaciones firmadas. El teléfono conservará una autorización local con vencimiento y política de gracia. El descubrimiento remoto y el túnel seguro se configurarán después de comprobar el acceso de red del local.', style: TextStyle(fontSize: 10, color: Color(0xFF7E7489), height: 1.45))]))])); }

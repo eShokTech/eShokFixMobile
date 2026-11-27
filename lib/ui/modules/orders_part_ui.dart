@@ -65,9 +65,11 @@ class _OrderPartDialogState extends State<OrderPartDialog> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const AlertDialog(
+    if (loading) {
+      return const AlertDialog(
       content: SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
     );
+    }
     return AlertDialog(
       title: const Text('Agregar refacción a la orden'),
       content: SizedBox(width: 420, child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -88,10 +90,12 @@ class _OrderPartDialogState extends State<OrderPartDialog> {
             for (final item in _items) {
               if (item['id'] == value) { selected = item; break; }
             }
-            if (selected != null) setState(() {
+            if (selected != null) {
+              setState(() {
               _itemId = value;
               price.text = _num(selected!['price']).toStringAsFixed(2);
             });
+            }
           },
         ),
         const SizedBox(height: 9),

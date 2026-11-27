@@ -176,7 +176,7 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
     ],
     const SizedBox(height: 9),
     DropdownButtonFormField<String>(
-      value: pricingMethod,
+      initialValue: pricingMethod,
       decoration: const InputDecoration(labelText: 'Regla para sugerir precio'),
       items: const [
         DropdownMenuItem(value: ProductPricingRules.directCost, child: Text('Costo directo')),
@@ -210,9 +210,11 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
       );
       if (context.mounted) Navigator.pop(context, true);
     } catch (error) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$error')),
       );
+      }
     }
   }, child: const Text('Guardar'))]);
 }
@@ -266,7 +268,7 @@ class InventoryPriceHistoryDialog extends StatelessWidget {
             child: ListView.separated(
               shrinkWrap: true,
               itemCount: rows.length,
-              separatorBuilder: (_, __) => const Divider(height: 16),
+              separatorBuilder: (_, _) => const Divider(height: 16),
               itemBuilder: (context, index) {
                 final row = rows[index];
                 return Column(

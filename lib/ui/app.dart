@@ -223,11 +223,11 @@ class _EShokFixShellState extends State<EShokFixShell> {
               contentPadding: const EdgeInsets.symmetric(vertical: 9, horizontal: 12),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide(color: eShokBorder),
+                borderSide: const BorderSide(color: eShokBorder),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(15),
-                borderSide: BorderSide(color: eShokBorder),
+                borderSide: const BorderSide(color: eShokBorder),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(15),
@@ -292,7 +292,7 @@ class SectionHeading extends StatelessWidget {
       Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: eShokInk)),
       if (subtitle != null) ...[const SizedBox(height: 3), Text(subtitle!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF82788E)))],
     ])),
-    if (trailing != null) trailing!,
+    ?trailing,
   ]);
 }
 

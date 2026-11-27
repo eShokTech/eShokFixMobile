@@ -86,7 +86,7 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
                   }
                   return ListView.separated(
                     itemCount: rows.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final row = rows[index];
                       final type = _str(row['type']);
@@ -265,7 +265,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
                 itemCount: rows.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final row = rows[index];
                   final severity = _str(row['severity'], 'INFO');

@@ -1236,7 +1236,7 @@ Future<void> _printPosTicket(
       children: [
         pw.Center(
           child: pw.Text(shopName,
-            style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+            style: const pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
         ),
         pw.Center(
           child: pw.Text('Ticket de venta',
@@ -1265,7 +1265,7 @@ Future<void> _printPosTicket(
         pw.Text('Subtotal: ${_money(sale['subtotal'])}'),
         pw.Text('Descuento: ${_money(sale['discount'])}'),
         pw.Text('TOTAL: ${_money(sale['total'])}',
-          style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
+          style: const pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
         pw.Text('Pago: ${_str(sale['payment_method'])}'),
         if (_str(sale['notes']).isNotEmpty)
           pw.Text('Detalle: ${_str(sale['notes'])}',
@@ -1409,7 +1409,7 @@ class _SaleDetailDialogState extends State<SaleDetailDialog> {
       build: (_) => pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Center(child: pw.Text(shopName, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))),
+          pw.Center(child: pw.Text(shopName, style: const pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))),
           pw.Center(child: pw.Text('Ticket de venta', style: const pw.TextStyle(fontSize: 9))),
           pw.SizedBox(height: 8),
           pw.Divider(),
@@ -1428,7 +1428,7 @@ class _SaleDetailDialogState extends State<SaleDetailDialog> {
           pw.Divider(),
           pw.Text('Subtotal: ${_money(sale['subtotal'])}'),
           pw.Text('Descuento: ${_money(sale['discount'])}'),
-          pw.Text('TOTAL: ${_money(sale['total'])}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
+          pw.Text('TOTAL: ${_money(sale['total'])}', style: const pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 13)),
           pw.Text('Pago: ${_str(sale['payment_method'])}'),
           pw.SizedBox(height: 10),
           pw.Center(child: pw.Text('Gracias por tu compra', style: const pw.TextStyle(fontSize: 8))),
