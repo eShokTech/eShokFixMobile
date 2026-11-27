@@ -303,11 +303,24 @@ class _SaleCartPageState extends State<SaleCartPage> {
   List<Map<String, Object?>> get _filteredProducts {
     final query = _normalizedQuery;
     if (query.isEmpty) return const [];
+    final compactQuery = query
+        .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+        .toUpperCase();
     return _products.where((item) {
       final name = _str(item['name']).toLowerCase();
       final sku = _str(item['sku']).toLowerCase();
       final barcode = _str(item['barcode']).toLowerCase();
-      return name.contains(query) || sku.contains(query) || barcode.contains(query);
+      final compactSku = sku
+          .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+          .toUpperCase();
+      final compactBarcode = barcode
+          .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+          .toUpperCase();
+      return name.contains(query) ||
+          sku.contains(query) ||
+          barcode.contains(query) ||
+          compactSku.contains(compactQuery) ||
+          compactBarcode.contains(compactQuery);
     }).take(30).toList();
   }
 
