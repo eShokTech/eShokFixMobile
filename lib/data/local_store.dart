@@ -229,7 +229,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 11,
+      version: 12,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -268,7 +268,7 @@ class LocalStore {
           method TEXT NOT NULL, reference TEXT DEFAULT '', notes TEXT DEFAULT '', created_at TEXT NOT NULL,
           FOREIGN KEY(order_id) REFERENCES service_orders(id))''');
         batch.execute('''CREATE TABLE inventory_items(
-          id INTEGER PRIMARY KEY AUTOINCREMENT, sku TEXT UNIQUE, name TEXT NOT NULL,
+          id INTEGER PRIMARY KEY AUTOINCREMENT, sku TEXT UNIQUE, barcode TEXT DEFAULT '', name TEXT NOT NULL,
           category TEXT DEFAULT 'General', stock REAL NOT NULL DEFAULT 0,
           min_stock REAL NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0,
           price REAL NOT NULL DEFAULT 0, location TEXT DEFAULT '', updated_at TEXT NOT NULL,
@@ -342,6 +342,7 @@ class LocalStore {
         await _createOrderRefundTable(db);
         await _createAppNotificationsTable(db);
         await _createInventoryPriceHistoryTable(db);
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_inventory_barcode ON inventory_items(barcode)");
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -402,6 +403,10 @@ class LocalStore {
         }
         if (oldVersion < 11) {
           await _createInventoryPriceHistoryTable(db);
+        }
+        if (oldVersion < 12) {
+          await db.execute("ALTER TABLE inventory_items ADD COLUMN barcode TEXT DEFAULT ''");
+          await db.execute("CREATE INDEX IF NOT EXISTS idx_inventory_barcode ON inventory_items(barcode)");
         }
       },
     );
