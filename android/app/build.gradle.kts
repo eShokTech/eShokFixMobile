@@ -16,6 +16,13 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    // Android Lint crashes inside image_picker_android during release analysis
+    // (JavaDocParser NoSuchMethodError). Keep debug analysis/tests enabled and
+    // skip only the broken dependency lint pass for release packaging.
+    lint {
+        checkReleaseBuilds = false
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
