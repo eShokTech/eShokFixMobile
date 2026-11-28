@@ -24,7 +24,11 @@ class _SalesPageState extends State<SalesPage> {
       context,
       MaterialPageRoute(builder: (_) => SaleCartPage(store: widget.store)),
     );
-    if (completed == true && mounted) setState(_refresh);
+    if (completed == true && mounted) {
+      final freshSales = await widget.store.sales();
+      if (!mounted) return;
+      setState(() => _sales = Future.value(freshSales));
+    }
   }
 
   Future<void> _priceChecker() async {
@@ -88,7 +92,11 @@ class _SalesPageState extends State<SalesPage> {
       context: context,
       builder: (_) => SaleDetailDialog(store: widget.store, sale: sale),
     );
-    if (updated == true && mounted) setState(_refresh);
+    if (updated == true && mounted) {
+      final freshSales = await widget.store.sales();
+      if (!mounted) return;
+      setState(() => _sales = Future.value(freshSales));
+    }
   }
 
   Widget _actionCard({
@@ -1354,6 +1362,7 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
   final TextEditingController _received = TextEditingController();
   final TextEditingController _exchangeRate = TextEditingController();
   final TextEditingController _transferReference = TextEditingController();
+  final TextEditingController _cardReference = TextEditingController();
   String _method = 'EFECTIVO';
   String _cashCurrency = 'MXN';
   bool _saveRateAsDefault = false;
@@ -1394,6 +1403,7 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
     _received.dispose();
     _exchangeRate.dispose();
     _transferReference.dispose();
+    _cardReference.dispose();
     super.dispose();
   }
 
@@ -1470,6 +1480,9 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
     } else if (_method == 'TRANSFERENCIA') {
       reference = _transferReference.text.trim();
       note = 'Referencia de transferencia: ${_transferReference.text.trim()}';
+    } else if (_method == 'TARJETA' && _cardReference.text.trim().isNotEmpty) {
+      reference = _cardReference.text.trim();
+      note = 'Referencia de tarjeta: ${_cardReference.text.trim()}';
     }
 
     try {
@@ -1552,6 +1565,7 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
                 _method = value.first;
                 _received.clear();
                 _transferReference.clear();
+                _cardReference.clear();
               }),
             ),
             const SizedBox(height: 14),
@@ -1627,13 +1641,14 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
                 children: [
                   Expanded(
                     child: GlassCard(
+                      padding: const EdgeInsets.all(20),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           const Text('Total a cobrar', style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
                           const SizedBox(height: 5),
-                          Text(_money(widget.total), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: eShokPurple)),
+                          Text(_money(widget.total), style: const TextStyle(fontSize: 29, fontWeight: FontWeight.w900, color: eShokPurple)),
                         ],
                       ),
                     ),
@@ -1666,6 +1681,18 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
                 decoration: const InputDecoration(
                   labelText: 'Referencia de transferencia',
                   prefixIcon: Icon(Icons.receipt_long_outlined),
+                ),
+              ),
+            ],
+            if (_method == 'TARJETA') ...[
+              const SizedBox(height: 14),
+              TextField(
+                controller: _cardReference,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Referencia de tarjeta (opcional)',
+                  hintText: 'Autorización / últimos dígitos / folio',
+                  prefixIcon: Icon(Icons.credit_card_outlined),
                 ),
               ),
             ],
@@ -1727,13 +1754,26 @@ class _SaleSuccessPage extends StatelessWidget {
                 ),
                 child: TweenAnimationBuilder<double>(
                   tween: Tween<double>(begin: 0, end: 1),
-                  duration: const Duration(milliseconds: 720),
-                  curve: Curves.elasticOut,
-                  builder: (context, value, child) => Opacity(
-                    opacity: value.clamp(0.0, 1.0).toDouble(),
-                    child: Transform.scale(scale: value, child: child),
-                  ),
-                  child: const Icon(Icons.check_circle, color: Color(0xFF279B70), size: 44),
+                  duration: const Duration(milliseconds: 900),
+                  builder: (context, progress, child) {
+                    final scale = TweenSequence<double>([
+                      TweenSequenceItem(tween: Tween(begin: 0.0, end: 1.28).chain(CurveTween(curve: Curves.easeOutBack)), weight: 55),
+                      TweenSequenceItem(tween: Tween(begin: 1.28, end: 0.90).chain(CurveTween(curve: Curves.easeInOut)), weight: 20),
+                      TweenSequenceItem(tween: Tween(begin: 0.90, end: 1.0).chain(CurveTween(curve: Curves.elasticOut)), weight: 25),
+                    ]).transform(progress);
+                    final opacity = Curves.easeOut.transform(progress.clamp(0.0, 1.0));
+                    return Opacity(
+                      opacity: opacity,
+                      child: Transform.scale(
+                        scale: scale,
+                        child: Transform.rotate(
+                          angle: (1 - progress) * -0.12,
+                          child: child,
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Icon(Icons.check_circle, color: Color(0xFF279B70), size: 48),
                 ),
               ),
               const SizedBox(height: 16),
