@@ -116,19 +116,20 @@ jobs:
           echo "Release package metadata: $PACKAGE_INFO"
           echo "$PACKAGE_INFO" | grep -Fq "package: name='com.eshokfix.mobile'"
           echo "Both APKs are valid, use the same signing certificate, and target the expected package."
-      - name: Install update over existing app on Android emulator
+      - name: Validate signed update APK without hosted emulator
         if: steps.signing.outputs.ready == 'true'
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          arch: x86_64
-          profile: pixel_2
-          emulator-boot-timeout: 300
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -accel on
-          disable-animations: true
-          script: |
-            adb install build/app/outputs/flutter-apk/app-debug.apk
-            adb install -r build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          APK="build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk"
+          test -s "$APK"
+          "$BUILD_TOOLS/apksigner" verify "$APK"
+          PACKAGE_INFO="$("$BUILD_TOOLS/aapt" dump badging "$APK")"
+          printf '%s\\n' "$PACKAGE_INFO" | grep -F "package: name='com.eshokfix.mobile'"
+          printf '%s\\n' "$PACKAGE_INFO" | grep -F "versionCode='\${GITHUB_RUN_NUMBER}'"
+          echo "Signed update APK validated. Hosted runner has no KVM, so emulator installation is not available here."
+
       - name: Upload stable signed APK
         if: steps.signing.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
