@@ -108,6 +108,17 @@ jobs:
           test "$DEBUG_CERT" = "$RELEASE_CERT"
           "$AAPT" dump badging "$RELEASE_APK" | grep -q "package: name='com.eshokfix.mobile'"
           echo "Both APKs are valid and use the same stable signing certificate."
+
+      - name: Install update over existing app on Android emulator
+        if: steps.signing.outputs.ready == 'true'
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            adb install build/app/outputs/flutter-apk/app-debug.apk
+            adb install -r build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk
       - name: Upload stable signed APK
         if: steps.signing.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
