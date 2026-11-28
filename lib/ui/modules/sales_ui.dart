@@ -1730,7 +1730,7 @@ class _SaleSuccessPage extends StatelessWidget {
                   duration: const Duration(milliseconds: 720),
                   curve: Curves.elasticOut,
                   builder: (context, value, child) => Opacity(
-                    opacity: value.clamp(0.0, 1.0),
+                    opacity: value.clamp(0.0, 1.0).toDouble(),
                     child: Transform.scale(scale: value, child: child),
                   ),
                   child: const Icon(Icons.check_circle, color: Color(0xFF279B70), size: 44),
