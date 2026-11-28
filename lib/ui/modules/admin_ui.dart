@@ -258,49 +258,67 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
   }
 
   @override
-  Widget build(BuildContext context) => PageFrame(
-    child: ListView(children: [
-      const SectionHeading('Actualizar eShokFix', subtitle: 'Instala nuevas versiones sin borrar los datos locales.'),
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      const SectionHeading(
+        'Actualizar eShokFix',
+        subtitle: 'Instala nuevas versiones sin borrar los datos locales.',
+      ),
       const SizedBox(height: 12),
-      GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Icon(Icons.system_update_alt, color: eShokPurple, size: 36),
-        const SizedBox(height: 10),
-        const Text('Actualización segura', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-        const SizedBox(height: 6),
-        const Text('La aplicación descarga el APK firmado desde la publicación oficial y abre el instalador del sistema Android. Android conserva los datos si la firma y el identificador de la aplicación coinciden.',
-          style: TextStyle(fontSize: 11, color: Color(0xFF81778D), height: 1.4)),
-        const SizedBox(height: 12),
-        Text(_status, style: const TextStyle(fontSize: 11, height: 1.4)),
-        const SizedBox(height: 14),
-        if (_release == null)
-          FilledButton.icon(
-            onPressed: _busy ? null : _check,
-            icon: _busy
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.refresh),
-            label: const Text('Buscar actualización'),
-          )
-        else
-          FilledButton.icon(
-            onPressed: _busy ? null : _install,
-            icon: _busy
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.download),
-            label: const Text('Instalar actualización'),
-          ),
-        if (_release != null) ...[
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _busy ? null : _check,
-            icon: const Icon(Icons.refresh),
-            label: const Text('Buscar de nuevo'),
-          ),
-        ],
-      ])),
+      const Icon(Icons.system_update_alt, color: eShokPurple, size: 36),
+      const SizedBox(height: 10),
+      const Text(
+        'Actualización segura',
+        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+      ),
+      const SizedBox(height: 6),
+      const Text(
+        'La aplicación descarga el APK firmado desde la publicación oficial y abre el instalador del sistema Android. Android conserva los datos si la firma y el identificador de la aplicación coinciden.',
+        style: TextStyle(fontSize: 11, color: Color(0xFF81778D), height: 1.4),
+      ),
       const SizedBox(height: 12),
-      const Text('Nota: Android siempre solicita confirmar la instalación. No se puede instalar silenciosamente desde una aplicación normal.',
-        style: TextStyle(fontSize: 10, color: Color(0xFF81778D))),
-    ]),
+      Text(_status, style: const TextStyle(fontSize: 11, height: 1.4)),
+      const SizedBox(height: 14),
+      if (_release == null)
+        FilledButton.icon(
+          onPressed: _busy ? null : _check,
+          icon: _busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh),
+          label: const Text('Buscar actualización'),
+        )
+      else
+        FilledButton.icon(
+          onPressed: _busy ? null : _install,
+          icon: _busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.download),
+          label: const Text('Instalar actualización'),
+        ),
+      if (_release != null) ...[
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : _check,
+          icon: const Icon(Icons.refresh),
+          label: const Text('Buscar de nuevo'),
+        ),
+      ],
+      const SizedBox(height: 12),
+      const Text(
+        'Nota: Android siempre solicita confirmar la instalación. No se puede instalar silenciosamente desde una aplicación normal.',
+        style: TextStyle(fontSize: 10, color: Color(0xFF81778D)),
+      ),
+    ],
   );
 }
 
