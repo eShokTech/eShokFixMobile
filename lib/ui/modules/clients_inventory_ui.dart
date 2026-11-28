@@ -9,6 +9,7 @@ class ClientsPage extends StatefulWidget {
 class _ClientsPageState extends State<ClientsPage> {
   final _query = TextEditingController();
   late Future<List<Map<String, Object?>>> _future;
+  int? _selectedClientId;
   @override
   void initState() { super.initState(); _refresh(); }
   void _refresh() => _future = widget.store.clients(query: _query.text);
@@ -26,38 +27,75 @@ class _ClientsPageState extends State<ClientsPage> {
       if (clients.isEmpty) return const EmptyState(title: 'No hay clientes', message: 'Registra clientes para relacionarlos con los equipos y servicios.');
       return ListView.builder(itemCount: clients.length, itemBuilder: (context, i) {
         final c = clients[i];
-        return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Row(children: [
-          CircleAvatar(backgroundColor: eShokPurpleLight.withValues(alpha: .35), foregroundColor: eShokPurple, child: Text(_str(c['name'], '?').substring(0,1).toUpperCase())),
-          const SizedBox(width: 11), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_str(c['name']), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(_str(c['phone'], 'Sin teléfono'), style: const TextStyle(fontSize: 10, color: Color(0xFF857B91))), const SizedBox(height: 5), Text('${c['device_count']} equipos · ${c['order_count']} servicios', style: const TextStyle(fontSize: 9, color: eShokPurple, fontWeight: FontWeight.w700))])),
-          if (_can('clients.manage') || _can('clients.delete'))
-            PopupMenuButton<String>(
-              onSelected: (value) async {
-                if (value == 'edit') {
-                  await _edit(c);
-                  return;
-                }
-                if (value == 'delete') {
-                  final messenger = ScaffoldMessenger.of(context);
-                  try {
-                    await widget.store.deleteClient(c['id'] as int);
-                    if (!mounted) return;
-                    setState(_refresh);
-                  } catch (error) {
-                    if (!mounted) return;
-                    messenger.showSnackBar(
-                      SnackBar(content: Text('$error')),
-                    );
-                  }
-                }
-              },
-              itemBuilder: (_) => [
-                if (_can('clients.manage'))
-                  const PopupMenuItem(value: 'edit', child: Text('Editar')),
-                if (_can('clients.delete'))
-                  const PopupMenuItem(value: 'delete', child: Text('Eliminar')),
+        final selected = _selectedClientId == c['id'];
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: GlassCard(
+            child: Column(children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => _selectedClientId = selected ? null : c['id'] as int),
+                child: Row(children: [
+                  CircleAvatar(backgroundColor: eShokPurpleLight.withValues(alpha: .35), foregroundColor: eShokPurple, child: Text(_str(c['name'], '?').substring(0,1).toUpperCase())),
+                  const SizedBox(width: 11),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_str(c['name']), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 3),
+                    Text(_str(c['phone'], 'Sin teléfono'), style: const TextStyle(fontSize: 10, color: Color(0xFF857B91))),
+                    const SizedBox(height: 5),
+                    Text('${c['device_count']} equipos · ${c['order_count']} servicios', style: const TextStyle(fontSize: 9, color: eShokPurple, fontWeight: FontWeight.w700)),
+                  ])),
+                  Icon(selected ? Icons.expand_less : Icons.expand_more, color: eShokPurple),
+                ]),
+              ),
+              if (selected && (_can('clients.manage') || _can('clients.delete'))) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+                Row(children: [
+                  if (_can('clients.manage'))
+                    Expanded(child: OutlinedButton.icon(
+                      onPressed: () => _edit(c),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Editar'),
+                    )),
+                  if (_can('clients.manage') && _can('clients.delete')) const SizedBox(width: 10),
+                  if (_can('clients.delete'))
+                    Expanded(child: FilledButton.tonalIcon(
+                      onPressed: () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                            title: const Text('Eliminar cliente'),
+                            content: Text('¿Quieres eliminar a ${_str(c['name'])}?'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancelar')),
+                              FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Eliminar')),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true) return;
+                        try {
+                          await widget.store.deleteClient(c['id'] as int);
+                          if (!mounted) return;
+                          setState(() {
+                            _selectedClientId = null;
+                            _refresh();
+                          });
+                        } catch (error) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+                        }
+                      },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Eliminar'),
+                    )),
+                ]),
               ],
-            ),
-        ])));
+            ]),
+          ),
+        );
+
       });
     })),
   ]));
