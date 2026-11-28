@@ -108,7 +108,11 @@ class AppUpdateService {
 
   Future<bool> canInstallPackages() async =>
       await _channel.invokeMethod<bool>('canInstallPackages') ?? false;
-  Future<void> requestInstallPermission() async => _channel.invokeMethod('requestInstallPermission');
-  Future<void> installApk(File apk) async =>
-      _channel.invokeMethod('installApk', {'path': apk.path});
+  Future<void> requestInstallPermission() async {
+    await _channel.invokeMethod<void>('requestInstallPermission');
+  }
+
+  Future<void> installApk(File apk) async {
+    await _channel.invokeMethod<void>('installApk', {'path': apk.path});
+  }
 }

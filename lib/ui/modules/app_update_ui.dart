@@ -1,3 +1,5 @@
+part of '../app.dart';
+
 class AppUpdateSettingsSection extends StatefulWidget {
   const AppUpdateSettingsSection({super.key});
   @override
