@@ -531,27 +531,25 @@ class _SaleCartPageState extends State<SaleCartPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ..._wholesaleRules.map((rule) {
-                  final fixed = _str(rule['type']) == 'fixed';
-                  final value = _num(rule['value']);
-                  return RadioListTile<String>(
-                    contentPadding: EdgeInsets.zero,
-                    value: _str(rule['id']),
-                    groupValue: selectedId,
-                    onChanged: (value) {
-                      if (value != null) setDialogState(() => selectedId = value);
-                    },
-                    title: Text(_str(rule['name']),
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-                    subtitle: Text(
-                      fixed
-                          ? 'Restar ${_money(value)} por unidad'
-                          : 'Restar ${value.toStringAsFixed(2)}% del precio',
-                      style: const TextStyle(fontSize: 10, color: Color(0xFF81778D)),
-                    ),
-                    activeColor: eShokPurple,
-                  );
-                }),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Descuento configurado'),
+                  items: _wholesaleRules.map((rule) {
+                    final fixed = _str(rule['type']) == 'fixed';
+                    final value = _num(rule['value']);
+                    final label = fixed
+                        ? _str(rule['name']) + ' · Restar ' + _money(value) + ' por unidad'
+                        : _str(rule['name']) + ' · Restar ' + value.toStringAsFixed(2) + '%';
+                    return DropdownMenuItem<String>(
+                      value: _str(rule['id']),
+                      child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    );
+                  }).toList(),
+                  onChanged: (value) => setDialogState(() {
+                    selectedId = value ?? selectedId;
+                  }),
+                ),
                 const Divider(),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
@@ -870,11 +868,13 @@ class _SaleCartPageState extends State<SaleCartPage> {
                           final line = entry.value;
                           final selected = identical(_selectedLine, line);
                           final wholesaleDetail = line.wholesaleType == 'fixed'
-                              ? '${line.wholesaleName ?? 'Mayoreo'} (-${_money(line.discountPerUnit)}/unidad)'
-                              : '${line.wholesaleName ?? 'Mayoreo'} (-${(line.wholesaleValue ?? 0).toStringAsFixed(2)}%)';
+                              ? (line.wholesaleName ?? 'Mayoreo') + ' (-' + _money(line.discountPerUnit) + '/unidad)'
+                              : (line.wholesaleName ?? 'Mayoreo') + ' (-' +
+                                  (line.wholesaleValue ?? 0).toStringAsFixed(2) + '%)';
                           final priceSummary = line.hasWholesale
-                              ? '${_money(line.unitPrice)} base · $wholesaleDetail · ${_money(line.effectiveUnitPrice)} c/u · ${_money(line.total)}'
-                              : '${_money(line.unitPrice)} c/u · ${_money(line.total)}';
+                              ? _money(line.unitPrice) + ' base · ' + wholesaleDetail + ' · ' +
+                                  _money(line.effectiveUnitPrice) + ' c/u · ' + _money(line.total)
+                              : _money(line.unitPrice) + ' c/u · ' + _money(line.total);
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: GlassCard(
@@ -935,57 +935,6 @@ class _SaleCartPageState extends State<SaleCartPage> {
                                     ),
                                   ],
                                 ),
-                              ),
-                            ),
-                          );
-                        }),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _discount,                        TextField(
-                          controller: _discount,                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _discount,
-                          final index = entry.key;
-                          final line = entry.value;
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: GlassCard(
-                              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(line.description,
-                                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-                                        const SizedBox(height: 3),
-                                        Text('${_money(line.unitPrice)} c/u · ${_money(line.total)}',
-                                          style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
-                                      ],
-                                    ),
-                                  ),
-                                  IconButton(
-                                    tooltip: 'Disminuir cantidad',
-                                    visualDensity: VisualDensity.compact,
-                                    onPressed: () => setState(() {
-                                      if (line.quantity > 1) {
-                                        line.quantity -= 1;
-                                      } else {
-                                        _cart.removeAt(index);
-                                      }
-                                    }),
-                                    icon: const Icon(Icons.remove_circle_outline),
-                                  ),
-                                  Text(line.quantity.toStringAsFixed(0),
-                                    style: const TextStyle(fontWeight: FontWeight.w800)),
-                                  IconButton(
-                                    tooltip: 'Aumentar cantidad',
-                                    visualDensity: VisualDensity.compact,
-                                    onPressed: () => setState(() => line.quantity += 1),
-                                    icon: const Icon(Icons.add_circle_outline, color: eShokPurple),
-                                  ),
-                                ],
                               ),
                             ),
                           );
@@ -1875,7 +1824,7 @@ class _ScanProductRingPainter extends CustomPainter {
             fontWeight: FontWeight.w900,
           ),
         ),
-        textDirection: TextDirection.ltr,
+        textDirection: ui.TextDirection.ltr,
       )..layout();
       final position = Offset(
         center.dx + math.cos(angle) * radius,

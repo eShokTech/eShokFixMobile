@@ -563,7 +563,7 @@ class _WholesaleDiscountSettingsSectionState
               const SizedBox(height: 5),
               Text(
                 type == 'fixed'
-                    ? 'Ejemplo: $20 resta veinte pesos al precio de cada unidad.'
+                    ? 'Ejemplo: \$20 resta veinte pesos al precio de cada unidad.'
                     : 'Ejemplo: 15% resta el quince por ciento del precio unitario.',
                 style: const TextStyle(fontSize: 10, color: Color(0xFF81778D)),
               ),
