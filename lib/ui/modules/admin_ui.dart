@@ -378,8 +378,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 await widget.store.saveSetting('default_warranty_days', days.toString());
                 await widget.store.saveSetting('pos.accept_usd_cash', acceptUsdCash ? '1' : '0');
                 await widget.store.saveSetting('pos.usd_exchange_rate', rate?.toStringAsFixed(4) ?? '');
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Configuración guardada localmente.')));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Configuración guardada localmente.')),
+                  );
+                }
               } : null,
               icon: const Icon(Icons.save_outlined), label: const Text('Guardar cambios')),
           ]),
