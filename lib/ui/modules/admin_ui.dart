@@ -351,8 +351,7 @@ class _SettingsPageState extends State<SettingsPage> {
     FilledButton.icon(
       onPressed: loaded ? () async {
         final days = int.tryParse(warranty.text.trim());
-        if (shop.text.trim().isEmpty || days == null || days < 0 || days > 3650 ||
-            false) {
+        if (shop.text.trim().isEmpty || days == null || days < 0 || days > 3650) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Revisa el nombre comercial y la garantía. La garantía debe ser de 0 a 3650 días.')));
           return;
