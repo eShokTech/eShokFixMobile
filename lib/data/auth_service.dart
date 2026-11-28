@@ -333,6 +333,62 @@ class AuthService {
     }
   }
 
+  Future<void> deleteUser(int userId) async {
+    await _requirePermission('users.manage');
+    final token = await _secureStorage.read(key: sessionKey);
+    if (token == null || token.isEmpty) {
+      throw StateError('Inicia sesión para administrar usuarios.');
+    }
+    final digest = sha256.convert(utf8.encode(token)).toString();
+    final sessionRows = await db.query(
+      'auth_sessions',
+      columns: ['user_id'],
+      where: 'token_hash=? AND revoked_at IS NULL',
+      whereArgs: [digest],
+      limit: 1,
+    );
+    if (sessionRows.isEmpty) throw StateError('La sesión ya no es válida.');
+    final currentUserId = sessionRows.first['user_id'] as int;
+    if (userId == currentUserId) {
+      throw StateError('No puedes eliminar la cuenta con la que tienes iniciada sesión.');
+    }
+
+    await db.transaction((tx) async {
+      final targets = await tx.query(
+        'users',
+        columns: ['id', 'role', 'username'],
+        where: 'id=?',
+        whereArgs: [userId],
+        limit: 1,
+      );
+      if (targets.isEmpty) throw StateError('Usuario no encontrado.');
+
+      final target = targets.first;
+      if ((target['role'] as String).toUpperCase() == 'ADMIN') {
+        final originalAdmins = await tx.query(
+          'users',
+          columns: ['id'],
+          where: "UPPER(role)='ADMIN'",
+          orderBy: 'id ASC',
+          limit: 1,
+        );
+        if (originalAdmins.isNotEmpty && originalAdmins.first['id'] == userId) {
+          throw StateError('La cuenta administradora original está protegida y no se puede eliminar.');
+        }
+      }
+
+      await tx.update(
+        'inventory_price_history',
+        {'changed_by': null},
+        where: 'changed_by=?',
+        whereArgs: [userId],
+      );
+      await tx.delete('auth_sessions', where: 'user_id=?', whereArgs: [userId]);
+      final deleted = await tx.delete('users', where: 'id=?', whereArgs: [userId]);
+      if (deleted != 1) throw StateError('No se pudo eliminar el usuario.');
+    });
+  }
+
   Future<void> resetPassword(int userId, String newPassword) async {
     await _requirePermission('users.manage');
     _validatePassword(newPassword);
