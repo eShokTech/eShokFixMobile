@@ -102,7 +102,7 @@ class _NewOrderDialogState extends State<NewOrderDialog> {
     content: SizedBox(width: 520, child: SingleChildScrollView(child: Form(key: _form, child: Column(mainAxisSize: MainAxisSize.min, children: [
       if (_clients.isEmpty) ...[
         const Text('Primero registra un cliente para abrir el expediente.'),
-        Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () async { final id = await showDialog<int>(context: context, builder: (_) => ClientFormDialog(store: widget.store)); if (id != null) { await _loadClients(); setState(() => _clientId = id); } }, icon: const Icon(Icons.person_add_alt_1), label: const Text('Crear cliente'))),
+        Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () async { final id = await Navigator.push<int>(context, MaterialPageRoute(builder: (_) => ClientFormDialog(store: widget.store))); if (id != null) { await _loadClients(); setState(() => _clientId = id); } }, icon: const Icon(Icons.person_add_alt_1), label: const Text('Crear cliente'))),
       ] else DropdownButtonFormField<int>(initialValue: _clientId, decoration: const InputDecoration(labelText: 'Cliente'), items: _clients.map((c) => DropdownMenuItem(value: c['id'] as int, child: Text(_str(c['name']), overflow: TextOverflow.ellipsis))).toList(), onChanged: (v) => setState(() => _clientId = v)),
       const SizedBox(height: 10), MediaQuery.sizeOf(context).width < 420
         ? Column(children: [_field(_brand, 'Marca', required: true), const SizedBox(height: 8), _field(_model, 'Modelo', required: true)])
