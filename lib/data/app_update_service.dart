@@ -67,7 +67,7 @@ class AppUpdateService {
           throw FormatException('La publicación tiene una etiqueta de versión no válida: $tag');
         }
         return AppUpdateRelease(
-          version: RegExp(r'Version:\\s*([^\\r\\n]+)', caseSensitive: false)
+          version: RegExp(r'Version:\s*([^\r\n]+)', caseSensitive: false)
                   .firstMatch(payload['body'] as String? ?? '')
                   ?.group(1)
                   ?.trim() ??
