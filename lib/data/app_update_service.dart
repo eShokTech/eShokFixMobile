@@ -9,11 +9,13 @@ class AppUpdateRelease {
     required this.version,
     required this.assetUrl,
     required this.assetSize,
+    required this.versionCode,
   });
 
   final String version;
   final String assetUrl;
   final int assetSize;
+  final int versionCode;
 }
 
 class AppUpdateService {
@@ -23,6 +25,9 @@ class AppUpdateService {
   static const String _releaseApi =
       'https://api.github.com/repos/eShokTech/eShokFixMobile/releases/latest';
   static const String _assetName = 'eShokFix-Mobile-release.apk';
+
+  Future<int> installedVersionCode() async =>
+      await _channel.invokeMethod<int>('getInstalledVersionCode') ?? 0;
 
   Future<AppUpdateRelease> latestRelease() async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
@@ -54,10 +59,18 @@ class AppUpdateService {
             size is! num || size <= 1024) {
           throw const FormatException('El APK publicado tiene datos incompletos.');
         }
+        final tag = payload['tag_name'] as String? ?? '';
+        final versionCode = int.tryParse(tag.startsWith('mobile-')
+            ? tag.substring('mobile-'.length)
+            : '');
+        if (versionCode == null || versionCode <= 0) {
+          throw FormatException('La publicación tiene una etiqueta de versión no válida: $tag');
+        }
         return AppUpdateRelease(
-          version: (payload['tag_name'] as String?) ?? 'Última versión',
+          version: tag,
           assetUrl: url,
           assetSize: size.toInt(),
+          versionCode: versionCode,
         );
       }
       throw const FormatException(
