@@ -265,6 +265,143 @@ class _SaleCartLine {
   };
 }
 
+class _SaleEntryDraft {
+  const _SaleEntryDraft({
+    required this.description,
+    required this.unitPrice,
+    this.quantity = 1,
+  });
+
+  final String description;
+  final double unitPrice;
+  final int quantity;
+}
+
+class _SaleEntryDialog extends StatefulWidget {
+  const _SaleEntryDialog({
+    super.key,
+    required this.title,
+    required this.descriptionLabel,
+    required this.priceLabel,
+    this.includeQuantity = false,
+  });
+
+  final String title;
+  final String descriptionLabel;
+  final String priceLabel;
+  final bool includeQuantity;
+
+  @override
+  State<_SaleEntryDialog> createState() => _SaleEntryDialogState();
+}
+
+class _SaleEntryDialogState extends State<_SaleEntryDialog> {
+  late final TextEditingController _description;
+  late final TextEditingController _amount;
+  late final TextEditingController _quantity;
+  String? _validationMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _description = TextEditingController();
+    _amount = TextEditingController();
+    _quantity = TextEditingController(text: '1');
+  }
+
+  @override
+  void dispose() {
+    _description.dispose();
+    _amount.dispose();
+    _quantity.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final description = _description.text.trim();
+    final amount = double.tryParse(_amount.text.trim().replaceAll(',', '.'));
+    final quantity = widget.includeQuantity
+        ? int.tryParse(_quantity.text.trim())
+        : 1;
+
+    if (description.isEmpty ||
+        amount == null || !amount.isFinite || amount < 0 ||
+        quantity == null || quantity < 1) {
+      setState(() {
+        _validationMessage = widget.includeQuantity
+            ? 'Indica nombre, precio válido y cantidad mayor que cero.'
+            : 'Indica una descripción y un precio válido.';
+      });
+      return;
+    }
+
+    Navigator.of(context).pop(
+      _SaleEntryDraft(
+        description: description,
+        unitPrice: amount,
+        quantity: quantity,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _description,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: InputDecoration(labelText: widget.descriptionLabel),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: widget.priceLabel,
+              prefixText: r'$ ',
+            ),
+          ),
+          if (widget.includeQuantity) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _quantity,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Cantidad'),
+            ),
+          ],
+          if (_validationMessage != null) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _validationMessage!,
+                style: const TextStyle(
+                  color: Color(0xFFB65E69),
+                  fontSize: 11,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(
+        onPressed: _submit,
+        child: Text(widget.includeQuantity ? 'Agregar al carrito' : 'Agregar'),
+      ),
+    ],
+  );
+}
+
 class SaleCartPage extends StatefulWidget {
   const SaleCartPage({super.key, required this.store});
   final LocalStore store;
@@ -438,73 +575,28 @@ class _SaleCartPageState extends State<SaleCartPage> {
   }
 
   Future<void> _addQuickItem() async {
-    final description = TextEditingController();
-    final amount = TextEditingController();
-    final quantity = TextEditingController(text: '1');
-    final saved = await showDialog<bool>(
+    final draft = await showDialog<_SaleEntryDraft>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Venta común'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: description,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(labelText: 'Nombre del artículo'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: amount,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Precio de venta', prefixText: r'$ '),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: quantity,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Cantidad'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Agregar al carrito'),
-          ),
-        ],
+      builder: (_) => const _SaleEntryDialog(
+        title: 'Venta común',
+        descriptionLabel: 'Nombre del artículo',
+        priceLabel: 'Precio de venta',
+        includeQuantity: true,
       ),
     );
-    if (saved == true && mounted) {
-      final value = double.tryParse(amount.text.trim().replaceAll(',', '.'));
-      final count = int.tryParse(quantity.text.trim());
-      if (description.text.trim().isEmpty ||
-          value == null || !value.isFinite || value < 0 ||
-          count == null || count < 1) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Indica nombre, precio válido y cantidad mayor que cero.')),
-        );
-      } else {
-        setState(() {
-          final line = _SaleCartLine(
-            description: description.text.trim(),
-            quantity: count.toDouble(),
-            unitPrice: value,
-          );
-          if (_saleWideWholesaleRule != null) {
-            line.applyWholesaleRule(_saleWideWholesaleRule!);
-          }
-          _cart.add(line);
-        });
+    if (draft == null || !mounted) return;
+
+    setState(() {
+      final line = _SaleCartLine(
+        description: draft.description,
+        quantity: draft.quantity.toDouble(),
+        unitPrice: draft.unitPrice,
+      );
+      if (_saleWideWholesaleRule != null) {
+        line.applyWholesaleRule(_saleWideWholesaleRule!);
       }
-    }
-    description.dispose();
-    amount.dispose();
-    quantity.dispose();
+      _cart.add(line);
+    });
   }
 
   Future<void> _showWholesaleMenu() async {
@@ -618,61 +710,27 @@ class _SaleCartPageState extends State<SaleCartPage> {
   }
 
   Future<void> _addService() async {
-    final description = TextEditingController();
-    final amount = TextEditingController();
-    final saved = await showDialog<bool>(
+    final draft = await showDialog<_SaleEntryDraft>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Agregar servicio'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: description,
-              decoration: const InputDecoration(labelText: 'Descripción del servicio'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: amount,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(labelText: 'Precio'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Agregar'),
-          ),
-        ],
+      builder: (_) => const _SaleEntryDialog(
+        title: 'Agregar servicio',
+        descriptionLabel: 'Descripción del servicio',
+        priceLabel: 'Precio',
       ),
     );
-    if (saved == true && mounted) {
-      final value = double.tryParse(amount.text.trim().replaceAll(',', '.'));
-      if (description.text.trim().isEmpty || value == null || !value.isFinite || value < 0) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Indica una descripción y un precio válido.')),
-        );
-      } else {
-        setState(() {
-          final line = _SaleCartLine(
-            description: description.text.trim(),
-            quantity: 1,
-            unitPrice: value,
-          );
-          if (_saleWideWholesaleRule != null) {
-            line.applyWholesaleRule(_saleWideWholesaleRule!);
-          }
-          _cart.add(line);
-        });
+    if (draft == null || !mounted) return;
+
+    setState(() {
+      final line = _SaleCartLine(
+        description: draft.description,
+        quantity: 1,
+        unitPrice: draft.unitPrice,
+      );
+      if (_saleWideWholesaleRule != null) {
+        line.applyWholesaleRule(_saleWideWholesaleRule!);
       }
-    }
-    description.dispose();
-    amount.dispose();
+      _cart.add(line);
+    });
   }
 
   Future<void> _continueToPayment() async {
