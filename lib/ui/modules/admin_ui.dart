@@ -364,49 +364,54 @@ class _SettingsPageState extends State<SettingsPage> {
       icon: const Icon(Icons.save_outlined), label: const Text('Guardar cambios')),
   ]);
 
-  Widget _currencySettings() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    SwitchListTile(
-      contentPadding: EdgeInsets.zero,
-      title: const Text('Aceptar dólares en caja', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-      subtitle: const Text('Muestra la opción Dólares USD al cobrar en efectivo.',
-        style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
-      value: acceptUsdCash,
-      onChanged: (value) => setState(() => acceptUsdCash = value),
-    ),
-    if (acceptUsdCash) ...[
-      const SizedBox(height: 10),
-      TextField(
-        controller: usdExchangeRate,
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        decoration: const InputDecoration(
-          labelText: 'Tipo de cambio (MXN por USD)',
-          prefixText: r'$ ',
-          helperText: 'Ejemplo: 18.50 significa que 1 dólar equivale a 18.50 pesos.',
+  Widget _currencySettings() => StatefulBuilder(
+    builder: (context, setCurrencyState) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Aceptar dólares en caja', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+          subtitle: const Text('Muestra la opción Dólares USD al cobrar en efectivo.',
+            style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+          value: acceptUsdCash,
+          onChanged: (value) => setCurrencyState(() => acceptUsdCash = value),
         ),
-      ),
-    ],
-    const SizedBox(height: 14),
-    FilledButton.icon(
-      onPressed: loaded ? () async {
-        final text = usdExchangeRate.text.trim().replaceAll(',', '.');
-        final rate = text.isEmpty ? null : double.tryParse(text);
-        if (acceptUsdCash && (rate == null || !rate.isFinite || rate <= 0)) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Ingresa un tipo de cambio válido mayor que cero.'),
-          ));
-          return;
-        }
-        await widget.store.saveSetting('pos.accept_usd_cash', acceptUsdCash ? '1' : '0');
-        await widget.store.saveSetting('pos.usd_exchange_rate', rate?.toStringAsFixed(4) ?? '');
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Moneda y tipo de cambio guardados.'),
-        ));
-      } : null,
-      icon: const Icon(Icons.save_outlined),
-      label: const Text('Guardar configuración de moneda'),
+        if (acceptUsdCash) ...[
+          const SizedBox(height: 10),
+          TextField(
+            controller: usdExchangeRate,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Tipo de cambio (MXN por USD)',
+              prefixText: r'$ ',
+              helperText: 'Ejemplo: 18.50 significa que 1 dólar equivale a 18.50 pesos.',
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: loaded ? () async {
+            final text = usdExchangeRate.text.trim().replaceAll(',', '.');
+            final rate = text.isEmpty ? null : double.tryParse(text);
+            if (acceptUsdCash && (rate == null || !rate.isFinite || rate <= 0)) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Ingresa un tipo de cambio válido mayor que cero.'),
+              ));
+              return;
+            }
+            await widget.store.saveSetting('pos.accept_usd_cash', acceptUsdCash ? '1' : '0');
+            await widget.store.saveSetting('pos.usd_exchange_rate', rate?.toStringAsFixed(4) ?? '');
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Moneda y tipo de cambio guardados.'),
+            ));
+          } : null,
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Guardar configuración de moneda'),
+        ),
+      ],
     ),
-  ]);
+  );
 
   @override
   Widget build(BuildContext context) => PageFrame(child: ListView(children: [
