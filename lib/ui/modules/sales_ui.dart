@@ -539,8 +539,8 @@ class _SaleCartPageState extends State<SaleCartPage> {
                     final fixed = _str(rule['type']) == 'fixed';
                     final value = _num(rule['value']);
                     final label = fixed
-                        ? _str(rule['name']) + ' · Restar ' + _money(value) + ' por unidad'
-                        : _str(rule['name']) + ' · Restar ' + value.toStringAsFixed(2) + '%';
+                        ? '${_str(rule['name'])} · Restar ${_money(value)} por unidad'
+                        : '${_str(rule['name'])} · Restar ${value.toStringAsFixed(2)}%';
                     return DropdownMenuItem<String>(
                       value: _str(rule['id']),
                       child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -868,13 +868,11 @@ class _SaleCartPageState extends State<SaleCartPage> {
                           final line = entry.value;
                           final selected = identical(_selectedLine, line);
                           final wholesaleDetail = line.wholesaleType == 'fixed'
-                              ? (line.wholesaleName ?? 'Mayoreo') + ' (-' + _money(line.discountPerUnit) + '/unidad)'
-                              : (line.wholesaleName ?? 'Mayoreo') + ' (-' +
-                                  (line.wholesaleValue ?? 0).toStringAsFixed(2) + '%)';
+                              ? '${line.wholesaleName ?? 'Mayoreo'} (-${_money(line.discountPerUnit)}/unidad)'
+                              : '${line.wholesaleName ?? 'Mayoreo'} (-${(line.wholesaleValue ?? 0).toStringAsFixed(2)}%)';
                           final priceSummary = line.hasWholesale
-                              ? _money(line.unitPrice) + ' base · ' + wholesaleDetail + ' · ' +
-                                  _money(line.effectiveUnitPrice) + ' c/u · ' + _money(line.total)
-                              : _money(line.unitPrice) + ' c/u · ' + _money(line.total);
+                              ? '${_money(line.unitPrice)} base · $wholesaleDetail · ${_money(line.effectiveUnitPrice)} c/u · ${_money(line.total)}'
+                              : '${_money(line.unitPrice)} c/u · ${_money(line.total)}';
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: GlassCard(
