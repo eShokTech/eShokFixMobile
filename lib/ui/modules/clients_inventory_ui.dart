@@ -16,7 +16,16 @@ class _ClientsPageState extends State<ClientsPage> {
   bool _can(String permission) => AuthService.can(widget.store.authenticatedUser?.role ?? '', permission);
   @override
   void dispose() { _query.dispose(); super.dispose(); }
-  Future<void> _edit([Map<String, Object?>? item]) async { final result = await Navigator.push<int>(context, MaterialPageRoute(builder: (_) => ClientFormDialog(store: widget.store, client: item))); if (result != null && mounted) setState(_refresh); }
+  Future<void> _edit([Map<String, Object?>? item]) async {
+    final result = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(builder: (_) => ClientFormDialog(store: widget.store, client: item)),
+    );
+    if (result == null || !mounted) return;
+    final freshClients = await widget.store.clients(query: _query.text);
+    if (!mounted) return;
+    setState(() => _future = Future.value(freshClients));
+  }
   @override
   Widget build(BuildContext context) => PageFrame(child: Column(children: [
     SectionHeading('Clientes', subtitle: 'Expedientes, equipos y datos de contacto', trailing: _can('clients.manage') ? FilledButton.tonalIcon(onPressed: () => _edit(), icon: const Icon(Icons.person_add_alt_1, size: 17), label: const Text('Nuevo')) : null),
@@ -79,9 +88,11 @@ class _ClientsPageState extends State<ClientsPage> {
                         try {
                           await widget.store.deleteClient(c['id'] as int);
                           if (!mounted) return;
+                          final freshClients = await widget.store.clients(query: _query.text);
+                          if (!mounted) return;
                           setState(() {
                             _selectedClientId = null;
-                            _refresh();
+                            _future = Future.value(freshClients);
                           });
                         } catch (error) {
                           if (!mounted) return;
