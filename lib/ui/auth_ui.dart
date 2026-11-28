@@ -103,6 +103,8 @@ class _LoginPageState extends State<LoginPage> {
   final _secure = const FlutterSecureStorage();
   bool _biometricAvailable = false;
   bool _biometricReady = false;
+  String? _biometricUsername;
+  bool _selectedIsPrimaryAdmin = false;
 
   @override
   void initState() {
@@ -121,6 +123,7 @@ class _LoginPageState extends State<LoginPage> {
         setState(() {
           _biometricAvailable = supported && enrolled.isNotEmpty;
           _biometricReady = _biometricAvailable && savedUser != null && savedPin != null;
+          _biometricUsername = savedUser;
         });
       }
     } catch (_) {
@@ -128,6 +131,7 @@ class _LoginPageState extends State<LoginPage> {
         setState(() {
           _biometricAvailable = false;
           _biometricReady = false;
+          _biometricUsername = null;
         });
       }
     }
@@ -149,8 +153,27 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final user = await widget.auth.login(username, _password.text);
       if (user == null) throw StateError('Usuario o contraseña incorrectos.');
-      await _secure.write(key: 'eshokfix.biometric.username', value: username);
-      await _secure.write(key: 'eshokfix.biometric.pin', value: _password.text);
+      final loginOptions = await _loginOptionsFuture;
+      final selectedAccount = loginOptions.firstWhere(
+        (account) => account['username'] == username,
+        orElse: () => <String, Object?>{},
+      );
+      final isPrimaryAdmin = (selectedAccount['is_primary_admin'] as num?)?.toInt() == 1;
+      if (isPrimaryAdmin) {
+        await _secure.write(key: 'eshokfix.biometric.username', value: username);
+        await _secure.write(key: 'eshokfix.biometric.pin', value: _password.text);
+        if (mounted) setState(() {
+          _biometricUsername = username;
+          _biometricReady = _biometricAvailable;
+        });
+      } else {
+        await _secure.delete(key: 'eshokfix.biometric.username');
+        await _secure.delete(key: 'eshokfix.biometric.pin');
+        if (mounted) setState(() {
+          _biometricUsername = null;
+          _biometricReady = false;
+        });
+      }
       if (mounted) widget.onAuthenticated(user);
     } catch (error) {
       if (mounted) setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
@@ -160,6 +183,20 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _loginWithBiometrics() async {
+    final selectedUsername = _selectedUsername;
+    if (selectedUsername == null || selectedUsername != _biometricUsername) {
+      setState(() => _error = 'Selecciona la cuenta administradora para usar la huella.');
+      return;
+    }
+    final loginOptions = await _loginOptionsFuture;
+    final selectedAccount = loginOptions.firstWhere(
+      (account) => account['username'] == selectedUsername,
+      orElse: () => <String, Object?>{},
+    );
+    if ((selectedAccount['is_primary_admin'] as num?)?.toInt() != 1) {
+      setState(() => _error = 'El acceso con huella está reservado para el administrador principal.');
+      return;
+    }
     setState(() { _busy = true; _error = null; });
     try {
       final authenticated = await _biometric.authenticate(
@@ -169,7 +206,7 @@ class _LoginPageState extends State<LoginPage> {
       if (!authenticated) return;
       final username = await _secure.read(key: 'eshokfix.biometric.username');
       final pin = await _secure.read(key: 'eshokfix.biometric.pin');
-      if (username == null || pin == null) {
+      if (username == null || pin == null || username != selectedUsername) {
         throw StateError('Inicia sesión con tu PIN una vez para activar el acceso biométrico.');
       }
       final user = await widget.auth.login(username, pin);
@@ -209,9 +246,19 @@ class _LoginPageState extends State<LoginPage> {
           final selected = users.any((user) => user['username'] == _selectedUsername)
               ? _selectedUsername
               : users.first['username'] as String;
-          if (_selectedUsername != selected) {
+          final selectedAccount = users.firstWhere(
+            (account) => account['username'] == selected,
+            orElse: () => <String, Object?>{},
+          );
+          final selectedIsPrimaryAdmin =
+              (selectedAccount['is_primary_admin'] as num?)?.toInt() == 1;
+          if (_selectedUsername != selected ||
+              _selectedIsPrimaryAdmin != selectedIsPrimaryAdmin) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) setState(() => _selectedUsername = selected);
+              if (mounted) setState(() {
+                _selectedUsername = selected;
+                _selectedIsPrimaryAdmin = selectedIsPrimaryAdmin;
+              });
             });
           }
           return DropdownButtonFormField<String>(
@@ -234,6 +281,9 @@ class _LoginPageState extends State<LoginPage> {
                 ? null
                 : (value) => setState(() {
                     _selectedUsername = value;
+                    _selectedIsPrimaryAdmin = users.any((account) =>
+                        account['username'] == value &&
+                        (account['is_primary_admin'] as num?)?.toInt() == 1);
                     _error = null;
                   }),
           );
@@ -244,17 +294,22 @@ class _LoginPageState extends State<LoginPage> {
       if (_error != null) ...[const SizedBox(height: 12), _ErrorText(_error!)],
       const SizedBox(height: 20),
       FilledButton(onPressed: _busy || _selectedUsername == null ? null : _login, child: _busy ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Iniciar sesión')),
-      if (_biometricAvailable) ...[
+      if (_biometricAvailable &&
+          _selectedIsPrimaryAdmin) ...[
         const SizedBox(height: 10),
         OutlinedButton.icon(
-          onPressed: _busy ? null : _loginWithBiometrics,
+          onPressed: _busy || _biometricUsername != _selectedUsername ? null : _loginWithBiometrics,
           icon: const Icon(Icons.fingerprint),
-          label: Text(_biometricReady ? 'Iniciar con huella dactilar' : 'Activar acceso con huella'),
+          label: Text(_biometricUsername == _selectedUsername
+              ? 'Iniciar con huella dactilar'
+              : 'Vincular huella del administrador'),
         ),
       ],
-      if (_biometricAvailable && !_biometricReady) ...[
+      if (_biometricAvailable &&
+          (snapshotPrimaryAdminPlaceholder) &&
+          _biometricUsername != _selectedUsername) ...[
         const SizedBox(height: 8),
-        const Text('Inicia sesión una vez con tu PIN para vincular esta cuenta con la huella del dispositivo.', textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+        const Text('Solo el administrador principal puede vincular y usar la huella. Las demás cuentas entran con su PIN.', textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Color(0xFF81778D))),
       ],
     ]),
   );
