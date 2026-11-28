@@ -24,11 +24,12 @@ class _SalesPageState extends State<SalesPage> {
       context,
       MaterialPageRoute(builder: (_) => SaleCartPage(store: widget.store)),
     );
-    if (completed == true && mounted) {
-      final freshSales = await widget.store.sales();
-      if (!mounted) return;
-      setState(() => _sales = Future.value(freshSales));
-    }
+    // Refresh after every return from the sale flow. A successful checkout
+    // can complete its nested receipt route before the cart route returns.
+    if (!mounted) return;
+    final freshSales = await widget.store.sales();
+    if (!mounted) return;
+    setState(() => _sales = Future.value(freshSales));
   }
 
   Future<void> _priceChecker() async {
