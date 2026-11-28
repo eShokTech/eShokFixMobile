@@ -93,6 +93,7 @@ jobs:
         if: steps.signing.outputs.ready == 'true'
         shell: bash
         run: |
+          set -euxo pipefail
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
           APKSIGNER="$BUILD_TOOLS/apksigner"
           AAPT="$BUILD_TOOLS/aapt"
@@ -102,13 +103,19 @@ jobs:
           test -s "$RELEASE_APK"
           "$APKSIGNER" verify "$DEBUG_APK"
           "$APKSIGNER" verify "$RELEASE_APK"
-          DEBUG_CERT="$("$APKSIGNER" verify --print-certs "$DEBUG_APK" | grep 'Signer #1 certificate SHA-256 digest' | head -n1)"
-          RELEASE_CERT="$("$APKSIGNER" verify --print-certs "$RELEASE_APK" | grep 'Signer #1 certificate SHA-256 digest' | head -n1)"
+          "$APKSIGNER" verify --print-certs "$DEBUG_APK" | tee /tmp/debug-certificate.txt
+          "$APKSIGNER" verify --print-certs "$RELEASE_APK" | tee /tmp/release-certificate.txt
+          DEBUG_CERT="$(sed -n 's/.*certificate SHA-256 digest: //p' /tmp/debug-certificate.txt | head -n1)"
+          RELEASE_CERT="$(sed -n 's/.*certificate SHA-256 digest: //p' /tmp/release-certificate.txt | head -n1)"
           test -n "$DEBUG_CERT"
+          test -n "$RELEASE_CERT"
+          echo "Debug signer SHA-256: $DEBUG_CERT"
+          echo "Release signer SHA-256: $RELEASE_CERT"
           test "$DEBUG_CERT" = "$RELEASE_CERT"
-          "$AAPT" dump badging "$RELEASE_APK" | grep -q "package: name='com.eshokfix.mobile'"
-          echo "Both APKs are valid and use the same stable signing certificate."
-
+          PACKAGE_INFO="$("$AAPT" dump badging "$RELEASE_APK" | head -n1)"
+          echo "Release package metadata: $PACKAGE_INFO"
+          echo "$PACKAGE_INFO" | grep -Fq "package: name='com.eshokfix.mobile'"
+          echo "Both APKs are valid, use the same signing certificate, and target the expected package."
       - name: Install update over existing app on Android emulator
         if: steps.signing.outputs.ready == 'true'
         uses: ReactiveCircus/android-emulator-runner@v2
