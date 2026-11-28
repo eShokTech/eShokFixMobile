@@ -144,9 +144,14 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _login() async {
+    final username = _selectedUsername;
+    if (username == null || username.isEmpty) {
+      setState(() => _error = 'Selecciona un usuario para continuar.');
+      return;
+    }
     setState(() { _busy = true; _error = null; });
     try {
-      final user = await widget.auth.login(_username.text, _password.text);
+      final user = await widget.auth.login(username, _password.text);
       if (user == null) throw StateError('Usuario o contraseña incorrectos.');
       await _secure.write(key: 'eshokfix.biometric.username', value: username);
       await _secure.write(key: 'eshokfix.biometric.pin', value: _password.text);
