@@ -192,6 +192,118 @@ class _UserDialogState extends State<UserDialog> {
   );
 }
 
+class AppUpdatePage extends StatefulWidget {
+  const AppUpdatePage({super.key});
+  @override
+  State<AppUpdatePage> createState() => _AppUpdatePageState();
+}
+
+class _AppUpdatePageState extends State<AppUpdatePage> {
+  final AppUpdateService _service = AppUpdateService();
+  AppUpdateRelease? _release;
+  String _status = 'Consulta las publicaciones oficiales de eShokFix para buscar una versión nueva.';
+  bool _busy = false;
+
+  Future<void> _check() async {
+    setState(() {
+      _busy = true;
+      _status = 'Buscando actualización…';
+      _release = null;
+    });
+    try {
+      final release = await _service.latestRelease();
+      if (!mounted) return;
+      setState(() {
+        _release = release;
+        _status = 'Versión disponible: ${release.version}. APK verificado por tamaño y formato.';
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _status = 'No se pudo consultar la actualización: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _install() async {
+    final release = _release;
+    if (release == null || _busy) return;
+    setState(() {
+      _busy = true;
+      _status = 'Descargando actualización…';
+    });
+    try {
+      final apk = await _service.download(release);
+      if (!mounted) return;
+      final allowed = await _service.canInstallPackages();
+      if (!allowed) {
+        await _service.requestInstallPermission();
+        if (!mounted) return;
+        setState(() {
+          _status = 'Autoriza a eShokFix en “Instalar apps desconocidas” y vuelve a tocar Instalar actualización.';
+        });
+        return;
+      }
+      setState(() => _status = 'Descarga completa. Abriendo el instalador de Android…');
+      await _service.install(apk);
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      setState(() => _status = 'Android no pudo iniciar la instalación: ${error.message ?? error.code}');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _status = 'No se pudo preparar la actualización: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PageFrame(
+    child: ListView(children: [
+      const SectionHeading('Actualizar eShokFix', subtitle: 'Instala nuevas versiones sin borrar los datos locales.'),
+      const SizedBox(height: 12),
+      GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Icon(Icons.system_update_alt, color: eShokPurple, size: 36),
+        const SizedBox(height: 10),
+        const Text('Actualización segura', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const SizedBox(height: 6),
+        const Text('La aplicación descarga el APK firmado desde la publicación oficial y abre el instalador del sistema Android. Android conserva los datos si la firma y el identificador de la aplicación coinciden.',
+          style: TextStyle(fontSize: 11, color: Color(0xFF81778D), height: 1.4)),
+        const SizedBox(height: 12),
+        Text(_status, style: const TextStyle(fontSize: 11, height: 1.4)),
+        const SizedBox(height: 14),
+        if (_release == null)
+          FilledButton.icon(
+            onPressed: _busy ? null : _check,
+            icon: _busy
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh),
+            label: const Text('Buscar actualización'),
+          )
+        else
+          FilledButton.icon(
+            onPressed: _busy ? null : _install,
+            icon: _busy
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.download),
+            label: const Text('Instalar actualización'),
+          ),
+        if (_release != null) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _check,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Buscar de nuevo'),
+          ),
+        ],
+      ])),
+      const SizedBox(height: 12),
+      const Text('Nota: Android siempre solicita confirmar la instalación. No se puede instalar silenciosamente desde una aplicación normal.',
+        style: TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+    ]),
+  );
+}
+
 class SettingsPage extends StatefulWidget { const SettingsPage({super.key, required this.store, required this.open}); final LocalStore store; final ValueChanged<String> open; @override State<SettingsPage> createState() => _SettingsPageState(); }
 class _SettingsPageState extends State<SettingsPage> {
   final shop = TextEditingController();
@@ -417,6 +529,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) => PageFrame(child: ListView(children: [
     const SectionHeading('Configuración', subtitle: 'Identidad y reglas generales'),
     const SizedBox(height: 13),
+    _settingsRow(context, Icons.system_update_alt, 'Actualizar aplicación', 'Buscar e instalar versiones nuevas', () {
+      _openSection('Actualizar eShokFix', const AppUpdatePage());
+    }),
     _settingsRow(context, Icons.storefront_outlined, 'Datos del taller', 'Nombre comercial y garantía', () {
       _openSection('Datos del taller', _shopSettings());
     }),
