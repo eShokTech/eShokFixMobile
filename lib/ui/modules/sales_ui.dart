@@ -411,7 +411,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
     return nextQuantity;
   }
 
-  Future<_ScanItemFeedback> _addScannedProduct(String code) async {
+  Future<ScanItemFeedback> _addScannedProduct(String code) async {
     final product = await widget.store.inventoryItemByCode(code);
     if (product == null || (product['is_demo'] as num?)?.toInt() == 1) {
       throw StateError('No se encontró un producto real con el código $code.');
@@ -419,7 +419,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
     final itemId = product['id'] as int;
     final isNew = !_cart.any((line) => line.itemId == itemId);
     final cartQuantity = _addProduct(product, fromScanner: true);
-    return _ScanItemFeedback(
+    return ScanItemFeedback(
       itemId: itemId,
       name: _str(product['name']),
       unitPrice: _num(product['price']),
@@ -661,11 +661,15 @@ class _SaleCartPageState extends State<SaleCartPage> {
         );
       } else {
         setState(() {
-          _cart.add(_SaleCartLine(
+          final line = _SaleCartLine(
             description: description.text.trim(),
             quantity: 1,
             unitPrice: value,
-          ));
+          );
+          if (_saleWideWholesaleRule != null) {
+            line.applyWholesaleRule(_saleWideWholesaleRule!);
+          }
+          _cart.add(line);
         });
       }
     }
@@ -865,9 +869,14 @@ class _SaleCartPageState extends State<SaleCartPage> {
                           final index = entry.key;
                           final line = entry.value;
                           final selected = identical(_selectedLine, line);
+                          final wholesaleDetail = line.wholesaleType == 'fixed'
+                              ? (line.wholesaleName ?? 'Mayoreo') + ' (-' + _money(line.discountPerUnit) + '/unidad)'
+                              : (line.wholesaleName ?? 'Mayoreo') + ' (-' +
+                                  (line.wholesaleValue ?? 0).toStringAsFixed(2) + '%)';
                           final priceSummary = line.hasWholesale
-                              ? '${_money(line.unitPrice)} base · Mayoreo aplicado · ${_money(line.effectiveUnitPrice)} c/u · ${_money(line.total)}'
-                              : '${_money(line.unitPrice)} c/u · ${_money(line.total)}';
+                              ? _money(line.unitPrice) + ' base · ' + wholesaleDetail + ' · ' +
+                                  _money(line.effectiveUnitPrice) + ' c/u · ' + _money(line.total)
+                              : _money(line.unitPrice) + ' c/u · ' + _money(line.total);
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: GlassCard(
@@ -1493,8 +1502,8 @@ class _SaleSuccessPage extends StatelessWidget {
     );
 }
 
-class _ScanItemFeedback {
-  const _ScanItemFeedback({
+class ScanItemFeedback {
+  const ScanItemFeedback({
     required this.itemId,
     required this.name,
     required this.unitPrice,
@@ -1525,7 +1534,7 @@ class BarcodeScannerPage extends StatefulWidget {
     this.onContinuousScan,
   });
 
-  final Future<_ScanItemFeedback> Function(String code)? onContinuousScan;
+  final Future<ScanItemFeedback> Function(String code)? onContinuousScan;
 
   @override
   State<BarcodeScannerPage> createState() => _BarcodeScannerPageState();
@@ -1535,6 +1544,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   late final MobileScannerController _controller;
   bool _finished = false;
   bool _processing = false;
+  bool _awaitingBarcodeClear = false;
   final Map<int, _ScannedProductCounter> _scannedProducts = {};
   String? _feedbackTitle;
   String? _feedbackDetail;
@@ -1548,7 +1558,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   void initState() {
     super.initState();
     _controller = MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
+      detectionSpeed: DetectionSpeed.normal,
     );
   }
 
@@ -1559,7 +1569,6 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   }
 
   void _onDetect(BarcodeCapture capture) {
-    if (_finished || _processing) return;
     String? value;
     for (final barcode in capture.barcodes) {
       final candidate = barcode.rawValue?.trim();
@@ -1568,7 +1577,17 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
         break;
       }
     }
-    if (value == null) return;
+
+    if (value == null) {
+      _awaitingBarcodeClear = false;
+      return;
+    }
+    if (_finished) return;
+    if (_processing) {
+      _awaitingBarcodeClear = true;
+      return;
+    }
+    if (_continuous && _awaitingBarcodeClear) return;
 
     if (!_continuous) {
       _finished = true;
@@ -1576,6 +1595,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
       return;
     }
 
+    _awaitingBarcodeClear = true;
     _processing = true;
     unawaited(_processContinuousCode(value));
   }
@@ -1595,7 +1615,8 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
             : 'Cantidad actualizada';
         _feedbackDetail = result.addedNew
             ? '${result.name} · ${_money(result.unitPrice)}. Se agregó al carrito.'
-            : 'Se sumó otra unidad de ${result.name}. Cantidad en el carrito: ${result.cartQuantity}.';
+            : 'Se sumó otra unidad de ' + result.name + ' · ' + _money(result.unitPrice) +
+                ' c/u. Cantidad en el carrito: ' + result.cartQuantity.toString() + '.';
         _feedbackIsError = false;
       });
     } catch (error) {
@@ -1797,6 +1818,14 @@ class _ScanProductBubble extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
+          Container(
+            width: 76,
+            height: 76,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFFB994ED), width: 1.4),
+            ),
+          ),
           CustomPaint(
             size: const Size(84, 84),
             painter: _ScanProductRingPainter(name),
