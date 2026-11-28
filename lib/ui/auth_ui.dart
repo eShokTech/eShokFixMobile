@@ -298,7 +298,7 @@ class _LoginPageState extends State<LoginPage> {
           _selectedIsPrimaryAdmin) ...[
         const SizedBox(height: 10),
         OutlinedButton.icon(
-          onPressed: _busy || _biometricUsername != _selectedUsername ? null : _loginWithBiometrics,
+          onPressed: _busy ? null : _loginWithBiometrics,
           icon: const Icon(Icons.fingerprint),
           label: Text(_biometricUsername == _selectedUsername
               ? 'Iniciar con huella dactilar'
