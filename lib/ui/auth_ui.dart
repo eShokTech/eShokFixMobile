@@ -1,5 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:local_auth/local_auth.dart';
 
 import '../data/auth_service.dart';
 import 'theme.dart';
@@ -22,6 +24,27 @@ class _InitialAdminPageState extends State<InitialAdminPage> {
   bool _busy = false;
   bool _showPassword = false;
   String? _error;
+  final _biometric = LocalAuthentication();
+  final _secure = const FlutterSecureStorage();
+  bool _biometricReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometric();
+  }
+
+  Future<void> _checkBiometric() async {
+    try {
+      final supported = await _biometric.isDeviceSupported();
+      final enrolled = await _biometric.getAvailableBiometrics();
+      final savedUser = await _secure.read(key: 'eshokfix.biometric.username');
+      final savedPin = await _secure.read(key: 'eshokfix.biometric.pin');
+      if (mounted) setState(() => _biometricReady = supported && enrolled.isNotEmpty && savedUser != null && savedPin != null);
+    } catch (_) {
+      if (mounted) setState(() => _biometricReady = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -105,6 +128,31 @@ class _LoginPageState extends State<LoginPage> {
     try {
       final user = await widget.auth.login(_username.text, _password.text);
       if (user == null) throw StateError('Usuario o contraseña incorrectos.');
+      await _secure.write(key: 'eshokfix.biometric.username', value: _username.text.trim());
+      await _secure.write(key: 'eshokfix.biometric.pin', value: _password.text);
+      if (mounted) widget.onAuthenticated(user);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _loginWithBiometrics() async {
+    setState(() { _busy = true; _error = null; });
+    try {
+      final authenticated = await _biometric.authenticate(
+        localizedReason: 'Confirma tu identidad para iniciar sesión en eShokFix',
+        options: const AuthenticationOptions(biometricOnly: true, stickyAuth: true),
+      );
+      if (!authenticated) return;
+      final username = await _secure.read(key: 'eshokfix.biometric.username');
+      final pin = await _secure.read(key: 'eshokfix.biometric.pin');
+      if (username == null || pin == null) {
+        throw StateError('Inicia sesión con tu PIN una vez para activar el acceso biométrico.');
+      }
+      final user = await widget.auth.login(username, pin);
+      if (user == null) throw StateError('No se pudo validar la cuenta guardada.');
       if (mounted) widget.onAuthenticated(user);
     } catch (error) {
       if (mounted) setState(() => _error = error.toString().replaceFirst('Bad state: ', ''));
@@ -124,6 +172,14 @@ class _LoginPageState extends State<LoginPage> {
       if (_error != null) ...[const SizedBox(height: 12), _ErrorText(_error!)],
       const SizedBox(height: 20),
       FilledButton(onPressed: _busy ? null : _login, child: _busy ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Iniciar sesión')),
+      if (_biometricReady) ...[
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : _loginWithBiometrics,
+          icon: const Icon(Icons.fingerprint),
+          label: const Text('Iniciar con huella dactilar'),
+        ),
+      ],
     ]),
   );
 }
