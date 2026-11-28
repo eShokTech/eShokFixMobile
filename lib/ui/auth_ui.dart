@@ -50,11 +50,7 @@ class _InitialAdminPageState extends State<InitialAdminPage> {
         displayName: _name.text,
         password: _password.text,
       );
-      final username = _selectedUsername;
-      if (username == null || username.isEmpty) {
-        throw StateError('Selecciona un usuario para continuar.');
-      }
-      final user = await widget.auth.login(username, _password.text);
+      final user = await widget.auth.login(_username.text, _password.text);
       if (user == null) throw StateError('No se pudo iniciar la sesión inicial.');
       if (mounted) widget.onAuthenticated(user);
     } catch (error) {
