@@ -121,7 +121,6 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) {
         setState(() {
           _biometricAvailable = supported && enrolled.isNotEmpty;
-          _biometricReady = _biometricAvailable && savedUser != null && savedPin != null;
           _biometricUsername = savedUser;
         });
       }
@@ -168,10 +167,11 @@ class _LoginPageState extends State<LoginPage> {
       } else {
         await _secure.delete(key: 'eshokfix.biometric.username');
         await _secure.delete(key: 'eshokfix.biometric.pin');
-        if (mounted) setState(() {
-          _biometricUsername = null;
-          _biometricReady = false;
-        });
+        if (mounted) {
+          setState(() {
+            _biometricUsername = null;
+          });
+        }
       }
       if (mounted) widget.onAuthenticated(user);
     } catch (error) {
