@@ -1725,7 +1725,16 @@ class _SaleSuccessPage extends StatelessWidget {
                   color: const Color(0xFFE6F5EE),
                   borderRadius: BorderRadius.circular(24),
                 ),
-                child: const Icon(Icons.check_circle, color: Color(0xFF279B70), size: 44),
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween<double>(begin: 0, end: 1),
+                  duration: const Duration(milliseconds: 720),
+                  curve: Curves.elasticOut,
+                  builder: (context, value, child) => Opacity(
+                    opacity: value.clamp(0.0, 1.0),
+                    child: Transform.scale(scale: value, child: child),
+                  ),
+                  child: const Icon(Icons.check_circle, color: Color(0xFF279B70), size: 44),
+                ),
               ),
               const SizedBox(height: 16),
               const Text('¡Cobro registrado!',
