@@ -286,7 +286,7 @@ class _AuthScaffold extends StatelessWidget {
               const Text(
                 'eShokFix v$_appVersion',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11, color: Color(0xFF968DA0), fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 11, color: Color(0xFF968DA0), fontWeight: FontWeight.w600),
               ),
             ]),
           ),
