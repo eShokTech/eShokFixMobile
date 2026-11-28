@@ -283,7 +283,7 @@ class _AuthScaffold extends StatelessWidget {
               const SizedBox(height: 26),
               Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(22), border: Border.all(color: eShokBorder), boxShadow: [BoxShadow(color: eShokPurple.withValues(alpha: .06), blurRadius: 24, offset: const Offset(0, 8))]), child: child),
               const SizedBox(height: 16),
-              Text(
+              const Text(
                 'eShokFix v$_appVersion',
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 11, color: Color(0xFF968DA0), fontWeight: FontWeight.w600),
