@@ -81,6 +81,14 @@ jobs:
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Build signed update APK
+        if: steps.signing.outputs.ready == 'true'
+        run: flutter build apk --release --build-number "${GITHUB_RUN_NUMBER}" --dart-define=ESHOKFIX_VERSION="0.2.0+${GITHUB_RUN_NUMBER}"
+
+      - name: Name update APK
+        if: steps.signing.outputs.ready == 'true'
+        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk
+
       - name: Verify update package and shared signing certificate
         if: steps.signing.outputs.ready == 'true'
         shell: bash
@@ -109,13 +117,6 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Build signed update APK
-        if: steps.signing.outputs.ready == 'true'
-        run: flutter build apk --release --build-number "${GITHUB_RUN_NUMBER}" --dart-define=ESHOKFIX_VERSION="0.2.0+${GITHUB_RUN_NUMBER}"
-
-      - name: Name update APK
-        if: steps.signing.outputs.ready == 'true'
-        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk
 
       - name: Publish in-app update
         if: steps.signing.outputs.ready == 'true'
