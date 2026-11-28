@@ -103,11 +103,10 @@ class _InventoryPageState extends State<InventoryPage> {
   @override
   void dispose() { _query.dispose(); super.dispose(); }
   Future<void> _edit([Map<String, Object?>? item]) async { final r = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => InventoryFormDialog(store: widget.store, item: item))); if (r == true && mounted) setState(_refresh); }
-  Future<void> _adjust(Map<String, Object?> item) async { final r = await showDialog<bool>(context: context, builder: (_) => StockDialog(store: widget.store, item: item)); if (r == true && mounted) setState(_refresh); }
+  Future<void> _adjust(Map<String, Object?> item) async { final r = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => StockDialog(store: widget.store, item: item))); if (r == true && mounted) setState(_refresh); }
   Future<void> _history(Map<String, Object?> item) async {
-    await showDialog<void>(context: context, builder: (_) => InventoryPriceHistoryDialog(
-      store: widget.store, item: item,
-    ));
+    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) =>
+      InventoryPriceHistoryDialog(store: widget.store, item: item)));
   }
   @override
   Widget build(BuildContext context) => PageFrame(child: Column(children: [
@@ -335,7 +334,56 @@ class _StockDialogState extends State<StockDialog> {
   @override
   void dispose() { qty.dispose(); reason.dispose(); super.dispose(); }
   @override
-  Widget build(BuildContext context) => AlertDialog(title: const Text('Movimiento de inventario'), content: Column(mainAxisSize: MainAxisSize.min, children: [Text(_str(widget.item['name']), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 5), Text('Existencia actual: ${_num(widget.item['stock'])}', style: const TextStyle(color: Color(0xFF857B91))), const SizedBox(height: 12), SegmentedButton<bool>(segments: const [ButtonSegment(value: true, label: Text('Entrada'), icon: Icon(Icons.add)), ButtonSegment(value: false, label: Text('Salida'), icon: Icon(Icons.remove))], selected: {incoming}, onSelectionChanged: (s) => setState(() => incoming = s.first)), const SizedBox(height: 9), TextField(controller: qty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad')), const SizedBox(height: 8), TextField(controller: reason, decoration: const InputDecoration(labelText: 'Motivo'))]), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')), FilledButton(onPressed: () async { final q = double.tryParse(qty.text) ?? 0; if (q <= 0 || reason.text.trim().isEmpty) return; try { await widget.store.adjustInventory(widget.item['id'] as int, incoming ? q : -q, reason.text); if (context.mounted) Navigator.pop(context, true); } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } }, child: const Text('Aplicar'))]);
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      leading: IconButton(onPressed: () => Navigator.pop(context, false), icon: const Icon(Icons.arrow_back)),
+      title: const Text('Movimiento de inventario'),
+    ),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(_str(widget.item['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        const SizedBox(height: 5),
+        Text('Existencia actual: ${_num(widget.item['stock'])}', style: const TextStyle(color: Color(0xFF857B91))),
+        const SizedBox(height: 18),
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: true, label: Text('Entrada'), icon: Icon(Icons.add)),
+            ButtonSegment(value: false, label: Text('Salida'), icon: Icon(Icons.remove)),
+          ],
+          selected: {incoming},
+          onSelectionChanged: (s) => setState(() => incoming = s.first),
+        ),
+        const SizedBox(height: 14),
+        TextField(controller: qty, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Cantidad')),
+        const SizedBox(height: 12),
+        TextField(controller: reason, maxLines: 2, decoration: const InputDecoration(labelText: 'Motivo')),
+      ],
+    ),
+    bottomNavigationBar: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: FilledButton.icon(
+          onPressed: () async {
+            final q = double.tryParse(qty.text.replaceAll(',', '.')) ?? 0;
+            if (q <= 0 || reason.text.trim().isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indica una cantidad válida y el motivo.')));
+              return;
+            }
+            try {
+              await widget.store.adjustInventory(widget.item['id'] as int, incoming ? q : -q, reason.text);
+              if (context.mounted) Navigator.pop(context, true);
+            } catch (e) {
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+            }
+          },
+          icon: const Icon(Icons.check),
+          label: const Text('Aplicar movimiento'),
+        ),
+      ),
+    ),
+  );
 }
 
 class InventoryPriceHistoryDialog extends StatelessWidget {
@@ -348,59 +396,42 @@ class InventoryPriceHistoryDialog extends StatelessWidget {
   final Map<String, Object?> item;
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text('Historial de precio · ${_str(item['name'])}'),
-    content: SizedBox(
-      width: 420,
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back)),
+      title: const Text('Historial de precios'),
+    ),
+    body: SafeArea(
       child: FutureBuilder<List<Map<String, Object?>>>(
         future: store.inventoryPriceHistory(item['id'] as int),
         builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Text('No se pudo cargar el historial: ${snapshot.error}');
-          }
-          if (!snapshot.hasData) {
-            return const SizedBox(
-              height: 100,
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
+          if (snapshot.hasError) return Center(child: Text('No se pudo cargar el historial: ${snapshot.error}'));
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
           final rows = snapshot.data!;
-          if (rows.isEmpty) {
-            return const Text('Este artículo todavía no tiene cambios de precio registrados.');
-          }
-          return SizedBox(
-            height: 360,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: rows.length,
-              separatorBuilder: (_, _) => const Divider(height: 16),
-              itemBuilder: (context, index) {
-                final row = rows[index];
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${_money(row['old_price'])}  →  ${_money(row['new_price'])}',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${_str(row['changed_by_name'], 'Usuario')} · ${_date(row['created_at'])}',
-                      style: const TextStyle(fontSize: 9, color: Color(0xFF81778D)),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(_str(row['reason']), style: const TextStyle(fontSize: 10)),
-                  ],
-                );
-              },
-            ),
+          if (rows.isEmpty) return const Center(child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('Este artículo todavía no tiene cambios de precio registrados.'),
+          ));
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: rows.length,
+            separatorBuilder: (_, _) => const Divider(height: 20),
+            itemBuilder: (context, index) {
+              final row = rows[index];
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('${_money(row['old_price'])}  →  ${_money(row['new_price'])}',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Text('${_str(row['changed_by_name'], 'Usuario')} · ${_date(row['created_at'])}\n${_str(row['reason'])}'),
+                ),
+              );
+            },
           );
         },
       ),
     ),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
-    ],
   );
 }
 
