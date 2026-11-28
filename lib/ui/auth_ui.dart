@@ -102,7 +102,6 @@ class _LoginPageState extends State<LoginPage> {
   final _biometric = LocalAuthentication();
   final _secure = const FlutterSecureStorage();
   bool _biometricAvailable = false;
-  bool _biometricReady = false;
   String? _biometricUsername;
   bool _selectedIsPrimaryAdmin = false;
 
@@ -130,7 +129,6 @@ class _LoginPageState extends State<LoginPage> {
       if (mounted) {
         setState(() {
           _biometricAvailable = false;
-          _biometricReady = false;
           _biometricUsername = null;
         });
       }
@@ -162,10 +160,11 @@ class _LoginPageState extends State<LoginPage> {
       if (isPrimaryAdmin) {
         await _secure.write(key: 'eshokfix.biometric.username', value: username);
         await _secure.write(key: 'eshokfix.biometric.pin', value: _password.text);
-        if (mounted) setState(() {
-          _biometricUsername = username;
-          _biometricReady = _biometricAvailable;
-        });
+        if (mounted) {
+          setState(() {
+            _biometricUsername = username;
+          });
+        }
       } else {
         await _secure.delete(key: 'eshokfix.biometric.username');
         await _secure.delete(key: 'eshokfix.biometric.pin');
@@ -255,10 +254,12 @@ class _LoginPageState extends State<LoginPage> {
           if (_selectedUsername != selected ||
               _selectedIsPrimaryAdmin != selectedIsPrimaryAdmin) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) setState(() {
-                _selectedUsername = selected;
-                _selectedIsPrimaryAdmin = selectedIsPrimaryAdmin;
-              });
+              if (mounted) {
+                setState(() {
+                  _selectedUsername = selected;
+                  _selectedIsPrimaryAdmin = selectedIsPrimaryAdmin;
+                });
+              }
             });
           }
           return DropdownButtonFormField<String>(
