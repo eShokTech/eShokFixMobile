@@ -120,9 +120,12 @@ jobs:
         if: steps.signing.outputs.ready == 'true'
         uses: ReactiveCircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 34
           arch: x86_64
-          profile: pixel_6
+          profile: pixel_2
+          emulator-boot-timeout: 300
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect
+          disable-animations: true
           script: |
             adb install build/app/outputs/flutter-apk/app-debug.apk
             adb install -r build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk
