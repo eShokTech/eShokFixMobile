@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:eshokfix_mobile/data/local_store.dart';
@@ -86,6 +85,34 @@ void main() {
     expect(saleAfterFull['status'], 'VOID');
     expect((saleAfterFull['refunded_total'] as num).toDouble(), 200);
     expect(await store.saleReturns(saleId), hasLength(2));
+  });
+
+  test('POS checkout stores transfer reference on payment and cash ledger', () async {
+    final saleId = await store.createSaleCart(
+      items: [
+        {
+          'description': 'Servicio de diagnóstico',
+          'quantity': 1,
+          'unit_price': 250,
+        },
+      ],
+      paymentMethod: 'TRANSFERENCIA',
+      paymentBreakdown: [
+        {'method': 'TRANSFERENCIA', 'amount': 250},
+      ],
+      paymentReference: 'SPEI-ESHK-2026-001',
+    );
+
+    final payments = await store.salePayments(saleId);
+    expect(payments, hasLength(1));
+    expect(payments.single['reference'], 'SPEI-ESHK-2026-001');
+
+    final movements = await store.cashMovements();
+    final saleMovement = movements.firstWhere(
+      (row) => row['related_sale_id'] == saleId,
+    );
+    expect(saleMovement['reference'], 'SPEI-ESHK-2026-001');
+    expect(saleMovement['payment_method'], 'TRANSFERENCIA');
   });
 
   test('purchase order receipts only increase stock as goods physically arrive', () async {
@@ -372,6 +399,7 @@ void main() {
     await store.saveInventoryItem(
       name: 'Batería Global Search',
       sku: 'ESH-GLOBAL-2026',
+      barcode: '7501234567890',
       stock: 8,
       minStock: 2,
       cost: 100,
@@ -391,6 +419,46 @@ void main() {
         row['type'] == 'PRODUCTO' && row['title'] == 'Batería Global Search'),
       isTrue,
     );
+
+    final deviceClientId = await store.saveClient(
+      name: 'Cliente Equipo A26',
+      phone: '8997654321',
+    );
+    await store.db.insert('devices', {
+      'client_id': deviceClientId,
+      'brand': 'Samsung',
+      'model': 'Galaxy A26 5G',
+      'color': 'Negro',
+      'imei': '359111111111111',
+      'serial': 'A26-TEST-001',
+      'created_at': DateTime.now().toIso8601String(),
+    });
+
+    final deviceResults = await store.globalSearch('A26');
+    expect(
+      deviceResults.any((row) =>
+        row['type'] == 'EQUIPO' &&
+        row['title'] == 'Samsung Galaxy A26 5G'),
+      isTrue,
+    );
+
+    final barcodeResults = await store.globalSearch('7501234567890');
+    expect(
+      barcodeResults.any((row) =>
+        row['type'] == 'PRODUCTO' && row['title'] == 'Batería Global Search'),
+      isTrue,
+    );
+
+    final scannedProduct = await store.inventoryItemByCode('7501234567890');
+    expect(scannedProduct?['name'], 'Batería Global Search');
+
+    final skuProduct = await store.inventoryItemByCode('ESH-GLOBAL-2026');
+    expect(skuProduct?['name'], 'Batería Global Search');
+
+    await store.saveSetting('pos.accept_usd_cash', '1');
+    await store.saveSetting('pos.usd_exchange_rate', '17.5000');
+    expect(await store.setting('pos.accept_usd_cash'), '1');
+    expect(await store.setting('pos.usd_exchange_rate'), '17.5000');
 
     final demoResults = await store.globalSearch('Cliente de demostración');
     expect(demoResults.any((row) => row['type'] == 'CLIENTE'), isFalse);

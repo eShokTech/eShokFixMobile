@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'data/local_store.dart';
 import 'data/auth_service.dart';
 import 'ui/app.dart';
@@ -89,20 +89,30 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     try {
       final user = await _auth.restoreSession();
       final setup = user == null ? await _auth.needsInitialSetup() : false;
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _user = user;
         widget.store.setAuthenticatedUser(user);
         _setupRequired = setup;
         _loading = false;
       });
+      }
     } catch (error) {
       if (mounted) setState(() { _error = error; _loading = false; });
     }
   }
 
+  bool _backgroundLogoutInProgress = false;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _isForeground = state == AppLifecycleState.resumed;
+    if (state == AppLifecycleState.paused && _user != null &&
+        !_backgroundLogoutInProgress) {
+      _backgroundLogoutInProgress = true;
+      _logout().whenComplete(() => _backgroundLogoutInProgress = false);
+      return;
+    }
     if (_isForeground && _user != null) {
       _validateSessionOnResume();
     }

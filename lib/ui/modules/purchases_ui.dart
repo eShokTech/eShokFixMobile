@@ -77,10 +77,12 @@ class _PurchasesPageState extends State<PurchasesPage> {
                 if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
                 if (!snap.hasData) return const Center(child: CircularProgressIndicator());
                 final rows = snap.data!;
-                if (rows.isEmpty) return const EmptyState(
+                if (rows.isEmpty) {
+                  return const EmptyState(
                   title: 'Sin proveedores',
                   message: 'Registra a tus proveedores para documentar las compras del taller.',
                 );
+                }
                 return ListView.builder(
                   itemCount: rows.length,
                   itemBuilder: (_, index) {
@@ -113,10 +115,12 @@ class _PurchasesPageState extends State<PurchasesPage> {
                 if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
                 if (!snap.hasData) return const Center(child: CircularProgressIndicator());
                 final rows = snap.data!;
-                if (rows.isEmpty) return const EmptyState(
+                if (rows.isEmpty) {
+                  return const EmptyState(
                   title: 'Sin compras registradas',
                   message: 'Registra una compra para aumentar existencias y controlar pagos al proveedor.',
                 );
+                }
                 return ListView.builder(
                   itemCount: rows.length,
                   itemBuilder: (_, index) {
@@ -382,9 +386,11 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const AlertDialog(content: SizedBox(
+    if (loading) {
+      return const AlertDialog(content: SizedBox(
       height: 90, child: Center(child: CircularProgressIndicator()),
     ));
+    }
     return AlertDialog(
       scrollable: true,
       title: const Text('Registrar compra'),
@@ -456,8 +462,10 @@ class _PurchaseDialogState extends State<PurchaseDialog> {
           value: splitPayment,
           onChanged: (value) => setState(() {
             splitPayment = value;
-            if (value) splitAmount.text = (double.tryParse(paid.text.replaceAll(',', '.')) ?? 0) / 2 == 0
+            if (value) {
+              splitAmount.text = (double.tryParse(paid.text.replaceAll(',', '.')) ?? 0) / 2 == 0
               ? '0' : ((double.tryParse(paid.text.replaceAll(',', '.')) ?? 0) / 2).toStringAsFixed(2);
+            }
           }),
         ),
         DropdownButtonFormField<String>(
@@ -761,12 +769,14 @@ class _PurchaseDetailDialogState extends State<PurchaseDetailDialog> {
                 method,
                 paymentBreakdown: breakdown,
               );
-              if (mounted) Navigator.pop(context, true);
-            } catch (e) {
-              if (mounted) {
-                setState(() => saving = false);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-              }
+              if (!context.mounted) return;
+              Navigator.pop(context, true);
+            } catch (error) {
+              if (!context.mounted) return;
+              setState(() => saving = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('$error')),
+              );
             }
           },
           child: Text(saving ? 'Guardando…' : 'Registrar abono'),

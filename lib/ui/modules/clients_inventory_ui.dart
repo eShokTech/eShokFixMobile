@@ -9,13 +9,23 @@ class ClientsPage extends StatefulWidget {
 class _ClientsPageState extends State<ClientsPage> {
   final _query = TextEditingController();
   late Future<List<Map<String, Object?>>> _future;
+  int? _selectedClientId;
   @override
   void initState() { super.initState(); _refresh(); }
   void _refresh() => _future = widget.store.clients(query: _query.text);
   bool _can(String permission) => AuthService.can(widget.store.authenticatedUser?.role ?? '', permission);
   @override
   void dispose() { _query.dispose(); super.dispose(); }
-  Future<void> _edit([Map<String, Object?>? item]) async { final result = await showDialog<int>(context: context, builder: (_) => ClientFormDialog(store: widget.store, client: item)); if (result != null && mounted) setState(_refresh); }
+  Future<void> _edit([Map<String, Object?>? item]) async {
+    final result = await Navigator.push<int>(
+      context,
+      MaterialPageRoute(builder: (_) => ClientFormDialog(store: widget.store, client: item)),
+    );
+    if (result == null || !mounted) return;
+    final freshClients = await widget.store.clients(query: _query.text);
+    if (!mounted) return;
+    setState(() => _future = Future.value(freshClients));
+  }
   @override
   Widget build(BuildContext context) => PageFrame(child: Column(children: [
     SectionHeading('Clientes', subtitle: 'Expedientes, equipos y datos de contacto', trailing: _can('clients.manage') ? FilledButton.tonalIcon(onPressed: () => _edit(), icon: const Icon(Icons.person_add_alt_1, size: 17), label: const Text('Nuevo')) : null),
@@ -26,11 +36,78 @@ class _ClientsPageState extends State<ClientsPage> {
       if (clients.isEmpty) return const EmptyState(title: 'No hay clientes', message: 'Registra clientes para relacionarlos con los equipos y servicios.');
       return ListView.builder(itemCount: clients.length, itemBuilder: (context, i) {
         final c = clients[i];
-        return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Row(children: [
-          CircleAvatar(backgroundColor: eShokPurpleLight.withValues(alpha: .35), foregroundColor: eShokPurple, child: Text(_str(c['name'], '?').substring(0,1).toUpperCase())),
-          const SizedBox(width: 11), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_str(c['name']), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 3), Text(_str(c['phone'], 'Sin teléfono'), style: const TextStyle(fontSize: 10, color: Color(0xFF857B91))), const SizedBox(height: 5), Text('${c['device_count']} equipos · ${c['order_count']} servicios', style: const TextStyle(fontSize: 9, color: eShokPurple, fontWeight: FontWeight.w700))])),
-          if (_can('clients.manage') || _can('clients.delete')) PopupMenuButton<String>(onSelected: (v) async { if (v == 'edit') await _edit(c); if (v == 'delete') { try { await widget.store.deleteClient(c['id'] as int); if (mounted) setState(_refresh); } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } } }, itemBuilder: (_) => [if (_can('clients.manage')) const PopupMenuItem(value: 'edit', child: Text('Editar')), if (_can('clients.delete')) const PopupMenuItem(value: 'delete', child: Text('Eliminar'))]),
-        ])));
+        final selected = _selectedClientId == c['id'];
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: GlassCard(
+            child: Column(children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => _selectedClientId = selected ? null : c['id'] as int),
+                child: Row(children: [
+                  CircleAvatar(backgroundColor: eShokPurpleLight.withValues(alpha: .35), foregroundColor: eShokPurple, child: Text(_str(c['name'], '?').substring(0,1).toUpperCase())),
+                  const SizedBox(width: 11),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_str(c['name']), style: const TextStyle(fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 3),
+                    Text(_str(c['phone'], 'Sin teléfono'), style: const TextStyle(fontSize: 10, color: Color(0xFF857B91))),
+                    const SizedBox(height: 5),
+                    Text('${c['device_count']} equipos · ${c['order_count']} servicios', style: const TextStyle(fontSize: 9, color: eShokPurple, fontWeight: FontWeight.w700)),
+                  ])),
+                  Icon(selected ? Icons.expand_less : Icons.expand_more, color: eShokPurple),
+                ]),
+              ),
+              if (selected && (_can('clients.manage') || _can('clients.delete'))) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+                Row(children: [
+                  if (_can('clients.manage'))
+                    Expanded(child: OutlinedButton.icon(
+                      onPressed: () => _edit(c),
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Editar'),
+                    )),
+                  if (_can('clients.manage') && _can('clients.delete')) const SizedBox(width: 10),
+                  if (_can('clients.delete'))
+                    Expanded(child: FilledButton.tonalIcon(
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (dialogContext) => AlertDialog(
+                            title: const Text('Eliminar cliente'),
+                            content: Text('¿Quieres eliminar a ${_str(c['name'])}?'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancelar')),
+                              FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Eliminar')),
+                            ],
+                          ),
+                        );
+                        if (confirmed != true || !mounted) return;
+                        try {
+                          await widget.store.deleteClient(c['id'] as int);
+                          if (!mounted) return;
+                          final freshClients = await widget.store.clients(query: _query.text);
+                          if (!mounted) return;
+                          setState(() {
+                            _selectedClientId = null;
+                            _future = Future.value(freshClients);
+                          });
+                        } catch (error) {
+                          if (!mounted) return;
+                          messenger.showSnackBar(SnackBar(content: Text('$error')));
+                        }
+                      },
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Eliminar'),
+                    )),
+                ]),
+              ],
+            ]),
+          ),
+        );
+
       });
     })),
   ]));
@@ -54,9 +131,53 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
   @override
   void dispose() { for (final c in [_name,_phone,_wa,_email,_address,_notes]) { c.dispose(); } super.dispose(); }
   @override
-  Widget build(BuildContext context) => AlertDialog(scrollable: true, title: Text(widget.client == null ? 'Nuevo cliente' : 'Editar cliente'), content: SizedBox(width: 440, child: SingleChildScrollView(child: Form(key: _form, child: Column(mainAxisSize: MainAxisSize.min, children: [
-    _field(_name, 'Nombre completo', required: true), const SizedBox(height: 8), _field(_phone, 'Teléfono'), const SizedBox(height: 8), _field(_wa, 'WhatsApp'), const SizedBox(height: 8), _field(_email, 'Correo'), const SizedBox(height: 8), _field(_address, 'Dirección'), const SizedBox(height: 8), _field(_notes, 'Notas', lines: 2),
-  ])))), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')), FilledButton(onPressed: () async { if (!_form.currentState!.validate()) return; final id = await widget.store.saveClient(id: widget.client?['id'] as int?, name: _name.text, phone: _phone.text, whatsapp: _wa.text, email: _email.text, address: _address.text, notes: _notes.text); if (context.mounted) Navigator.pop(context, id); }, child: const Text('Guardar'))]);
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back)),
+      title: Text(widget.client == null ? 'Nuevo cliente' : 'Editar cliente'),
+    ),
+    body: Form(
+      key: _form,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _field(_name, 'Nombre completo', required: true),
+          const SizedBox(height: 12),
+          _field(_phone, 'Teléfono'),
+          const SizedBox(height: 12),
+          _field(_wa, 'WhatsApp'),
+          const SizedBox(height: 12),
+          _field(_email, 'Correo'),
+          const SizedBox(height: 12),
+          _field(_address, 'Dirección'),
+          const SizedBox(height: 12),
+          _field(_notes, 'Notas', lines: 3),
+        ],
+      ),
+    ),
+    bottomNavigationBar: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: FilledButton.icon(
+          onPressed: () async {
+            if (!_form.currentState!.validate()) return;
+            try {
+              final id = await widget.store.saveClient(
+                id: widget.client?['id'] as int?, name: _name.text,
+                phone: _phone.text, whatsapp: _wa.text, email: _email.text,
+                address: _address.text, notes: _notes.text,
+              );
+              if (context.mounted) Navigator.pop(context, id);
+            } catch (error) {
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+            }
+          },
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Guardar cliente'),
+        ),
+      ),
+    ),
+  );
 }
 
 class InventoryPage extends StatefulWidget {
@@ -68,6 +189,7 @@ class InventoryPage extends StatefulWidget {
 class _InventoryPageState extends State<InventoryPage> {
   final _query = TextEditingController();
   late Future<List<Map<String, Object?>>> _future;
+  int? _selectedItemId;
   @override
   void initState() { super.initState(); _refresh(); }
   void _refresh() => _future = widget.store.inventory(query: _query.text);
@@ -75,12 +197,11 @@ class _InventoryPageState extends State<InventoryPage> {
   bool _canViewCost() => AuthService.can(widget.store.authenticatedUser?.role ?? '', 'inventory.cost.view');
   @override
   void dispose() { _query.dispose(); super.dispose(); }
-  Future<void> _edit([Map<String, Object?>? item]) async { final r = await showDialog<bool>(context: context, builder: (_) => InventoryFormDialog(store: widget.store, item: item)); if (r == true && mounted) setState(_refresh); }
-  Future<void> _adjust(Map<String, Object?> item) async { final r = await showDialog<bool>(context: context, builder: (_) => StockDialog(store: widget.store, item: item)); if (r == true && mounted) setState(_refresh); }
+  Future<void> _edit([Map<String, Object?>? item]) async { final r = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => InventoryFormDialog(store: widget.store, item: item))); if (r == true && mounted) setState(_refresh); }
+  Future<void> _adjust(Map<String, Object?> item) async { final r = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => StockDialog(store: widget.store, item: item))); if (r == true && mounted) setState(_refresh); }
   Future<void> _history(Map<String, Object?> item) async {
-    await showDialog<void>(context: context, builder: (_) => InventoryPriceHistoryDialog(
-      store: widget.store, item: item,
-    ));
+    await Navigator.push<void>(context, MaterialPageRoute(builder: (_) =>
+      InventoryPriceHistoryDialog(store: widget.store, item: item)));
   }
   @override
   Widget build(BuildContext context) => PageFrame(child: Column(children: [
@@ -96,26 +217,86 @@ class _InventoryPageState extends State<InventoryPage> {
         final metrics = _canViewCost()
             ? ProductPricingRules.metrics(cost: _num(item['cost']), salePrice: _num(item['price']))
             : null;
-        return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Row(children: [
-          Container(width: 42, height: 42, decoration: BoxDecoration(color: low ? const Color(0xFFFFF1E2) : eShokPurpleLight.withValues(alpha: .28), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.inventory_2_outlined, color: low ? const Color(0xFFCA7B2C) : eShokPurple)),
-          const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_str(item['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
-            const SizedBox(height: 3),
-            Text('${_str(item['sku'], 'Sin SKU')} · ${_str(item['category'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))),
-            const SizedBox(height: 4),
-            Text('${_num(item['stock']).toStringAsFixed(0)} en existencia · ${_money(item['price'])}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: eShokInk)),
-            if (metrics != null) ...[
-              const SizedBox(height: 3),
-              Text('Costo ${_money(item['cost'])} · Utilidad ${_money(metrics['profit'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF756A85))),
-              Text(metrics['margin_percent'] == null
-                  ? 'Margen no calculable'
-                  : 'Margen ${metrics['margin_percent']!.toStringAsFixed(1)}% · Sobre costo ${metrics['markup_percent']!.toStringAsFixed(1)}%',
-                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                  color: (metrics['profit'] ?? 0) < 0 ? const Color(0xFFC14F5A) : const Color(0xFF29966F))),
-            ],
-          ])),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [if (low) const Text('STOCK BAJO', style: TextStyle(fontSize: 8, color: Color(0xFFCA7B2C), fontWeight: FontWeight.w900)), if (_canManage()) TextButton(onPressed: () => _adjust(item), child: const Text('Movimiento', style: TextStyle(fontSize: 10))), if (_canManage() || _canViewCost()) PopupMenuButton<String>(onSelected: (v) { if (v == 'edit') _edit(item); if (v == 'adjust') _adjust(item); if (v == 'history') _history(item); }, itemBuilder: (_) => [if (_canManage()) const PopupMenuItem(value: 'edit', child: Text('Editar artículo')), if (_canManage()) const PopupMenuItem(value: 'adjust', child: Text('Ajustar stock')), if (_canViewCost()) const PopupMenuItem(value: 'history', child: Text('Historial de precios'))])]),
-        ])));
+        final selected = _selectedItemId == item['id'];
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: GlassCard(
+            child: Column(children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => _selectedItemId = selected ? null : item['id'] as int),
+                child: Row(children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: low ? const Color(0xFFFFF1E2) : eShokPurpleLight.withValues(alpha: .28),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.inventory_2_outlined, color: low ? const Color(0xFFCA7B2C) : eShokPurple),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_str(item['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                    const SizedBox(height: 3),
+                    Text('${_str(item['sku'], 'Sin SKU')} · ${_str(item['barcode'], 'Sin barras')} · ${_str(item['category'])}',
+                      style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))),
+                    const SizedBox(height: 4),
+                    Text('${_num(item['stock']).toStringAsFixed(0)} en existencia · ${_money(item['price'])}',
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: eShokInk)),
+                    if (metrics != null) ...[
+                      const SizedBox(height: 3),
+                      Text('Costo ${_money(item['cost'])} · Utilidad ${_money(metrics['profit'])}',
+                        style: const TextStyle(fontSize: 9, color: Color(0xFF756A85))),
+                      Text(metrics['margin_percent'] == null
+                          ? 'Margen no calculable'
+                          : 'Margen ${metrics['margin_percent']!.toStringAsFixed(1)}% · Sobre costo ${metrics['markup_percent']!.toStringAsFixed(1)}%',
+                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                          color: (metrics['profit'] ?? 0) < 0 ? const Color(0xFFC14F5A) : const Color(0xFF29966F))),
+                    ],
+                  ])),
+                  const SizedBox(width: 6),
+                  Icon(selected ? Icons.expand_less : Icons.expand_more, color: eShokPurple),
+                ]),
+              ),
+              if (low) ...[
+                const SizedBox(height: 6),
+                const Align(alignment: Alignment.centerLeft,
+                  child: Text('STOCK BAJO', style: TextStyle(fontSize: 8, color: Color(0xFFCA7B2C), fontWeight: FontWeight.w900))),
+              ],
+              if (selected && (_canManage() || _canViewCost())) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 9),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (_canManage())
+                      OutlinedButton.icon(
+                        onPressed: () => _edit(item),
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const Text('Editar artículo'),
+                      ),
+                    if (_canManage())
+                      OutlinedButton.icon(
+                        onPressed: () => _adjust(item),
+                        icon: const Icon(Icons.tune),
+                        label: const Text('Ajustar stock'),
+                      ),
+                    if (_canViewCost())
+                      OutlinedButton.icon(
+                        onPressed: () => _history(item),
+                        icon: const Icon(Icons.price_change_outlined),
+                        label: const Text('Historial de precios'),
+                      ),
+                  ],
+                ),
+              ],
+            ]),
+          ),
+        );
+
       });
     })),
   ]));
@@ -129,6 +310,7 @@ class InventoryFormDialog extends StatefulWidget {
 }
 class _InventoryFormDialogState extends State<InventoryFormDialog> {
   late final sku = TextEditingController(text: _str(widget.item?['sku']));
+  late final barcode = TextEditingController(text: _str(widget.item?['barcode']));
   late final name = TextEditingController(text: _str(widget.item?['name']));
   late final category = TextEditingController(text: _str(widget.item?['category'], 'General'));
   late final stock = TextEditingController(text: _str(widget.item?['stock'], '0'));
@@ -141,7 +323,7 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
   String pricingMethod = ProductPricingRules.percentageProfit;
   final form = GlobalKey<FormState>();
   @override
-  void dispose() { for (final c in [sku,name,category,stock,minStock,cost,price,location,pricingValue,priceReason]) { c.dispose(); } super.dispose(); }
+  void dispose() { for (final c in [sku,barcode,name,category,stock,minStock,cost,price,location,pricingValue,priceReason]) { c.dispose(); } super.dispose(); }
   double val(TextEditingController c) => double.tryParse(c.text) ?? 0;
   double? get suggestedPrice {
     try {
@@ -161,59 +343,139 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
     ProductPricingRules.percentageSale => 'Calcula el precio para obtener ese margen sobre el precio final.',
     _ => '',
   };
+  Future<void> _scanBarcode() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const BarcodeScannerPage()),
+    );
+    if (code != null && mounted) setState(() => barcode.text = code);
+  }
+
   @override
-  Widget build(BuildContext context) => AlertDialog(scrollable: true, title: Text(widget.item == null ? 'Nuevo artículo' : 'Editar artículo'), content: SizedBox(width: 420, child: SingleChildScrollView(child: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, children: [
-    _field(name, 'Nombre', required: true), const SizedBox(height: 8), Row(children: [Expanded(child: _field(sku, 'SKU / código')), const SizedBox(width: 8), Expanded(child: _field(category, 'Categoría'))]), const SizedBox(height: 8), Row(children: [Expanded(child: widget.item == null ? _field(stock, 'Existencia inicial', number: true) : InputDecorator(decoration: const InputDecoration(labelText: 'Existencia actual'), child: Text(_str(widget.item?['stock'], '0')))), const SizedBox(width: 8), Expanded(child: _field(minStock, 'Mínimo', number: true))]),
-    if (widget.item != null) const Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 4), child: Text('Para modificar existencias, registra un movimiento de inventario. Así se conserva el historial.', style: TextStyle(fontSize: 10, color: Color(0xFF81778D))))),
-    const SizedBox(height: 8),
-    Row(children: [Expanded(child: _field(cost, 'Costo', number: true, onChanged: (_) => setState(() {}))), const SizedBox(width: 8), Expanded(child: _field(price, 'Precio', number: true, onChanged: (_) => setState(() {})))]),
-    if (priceChanged) ...[
-      const SizedBox(height: 8),
-      _field(priceReason, 'Motivo del cambio de precio', required: true, lines: 2),
-      const SizedBox(height: 4),
-      const Align(alignment: Alignment.centerLeft, child: Text('El cambio quedará registrado con el usuario, precio anterior y nuevo precio.', style: TextStyle(fontSize: 9, color: Color(0xFF81778D)))),
-    ],
-    const SizedBox(height: 9),
-    DropdownButtonFormField<String>(
-      value: pricingMethod,
-      decoration: const InputDecoration(labelText: 'Regla para sugerir precio'),
-      items: const [
-        DropdownMenuItem(value: ProductPricingRules.directCost, child: Text('Costo directo')),
-        DropdownMenuItem(value: ProductPricingRules.fixedProfit, child: Text('Ganancia fija')),
-        DropdownMenuItem(value: ProductPricingRules.percentageProfit, child: Text('% sobre costo')),
-        DropdownMenuItem(value: ProductPricingRules.percentageSale, child: Text('% de margen sobre venta')),
-      ],
-      onChanged: (value) => setState(() { pricingMethod = value ?? ProductPricingRules.percentageProfit; }),
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      leading: IconButton(
+        tooltip: 'Regresar',
+        onPressed: () => Navigator.pop(context, false),
+        icon: const Icon(Icons.arrow_back),
+      ),
+      title: Text(widget.item == null ? 'Nuevo artículo' : 'Editar artículo'),
     ),
-    if (pricingMethod != ProductPricingRules.directCost) ...[
-      const SizedBox(height: 8),
-      _field(pricingValue, pricingMethod == ProductPricingRules.fixedProfit ? 'Ganancia fija (\$)' : 'Porcentaje (%)', number: true, onChanged: (_) => setState(() {})),
-    ],
-    const SizedBox(height: 7),
-    Text(pricingHelp, style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
-    const SizedBox(height: 5),
-    Row(children: [
-      Expanded(child: Text(suggestedPrice == null ? 'Revisa costo y porcentaje para calcular.' : 'Precio sugerido: ${_money(suggestedPrice)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: eShokPurple))),
-      TextButton.icon(onPressed: suggestedPrice == null ? null : () => setState(() { price.text = suggestedPrice!.toStringAsFixed(2); }), icon: const Icon(Icons.calculate_outlined, size: 16), label: const Text('Aplicar')),
-    ]),
-    const SizedBox(height: 8), _field(location, 'Ubicación'),
-  ])))), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')), FilledButton(onPressed: () async {
-    if (!form.currentState!.validate()) return;
-    try {
-      await widget.store.saveInventoryItem(
-        id: widget.item?['id'] as int?, sku: sku.text, name: name.text,
-        category: category.text,
-        stock: widget.item == null ? val(stock) : _num(widget.item?['stock']),
-        minStock: val(minStock), cost: val(cost), price: val(price),
-        location: location.text, priceChangeReason: priceReason.text,
-      );
-      if (context.mounted) Navigator.pop(context, true);
-    } catch (error) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$error')),
-      );
-    }
-  }, child: const Text('Guardar'))]);
+    body: SafeArea(
+      child: Form(
+        key: form,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            _field(name, 'Nombre', required: true),
+            const SizedBox(height: 12),
+            _field(sku, 'SKU / código'),
+            const SizedBox(height: 12),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: _field(barcode, 'Código QR / barras')),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: IconButton.filledTonal(
+                  tooltip: 'Escanear con cámara',
+                  onPressed: _scanBarcode,
+                  icon: const Icon(Icons.qr_code_scanner),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            _field(category, 'Categoría'),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: widget.item == null
+                ? _field(stock, 'Existencia inicial', number: true)
+                : InputDecorator(
+                    decoration: const InputDecoration(labelText: 'Existencia actual'),
+                    child: Text(_str(widget.item?['stock'], '0')),
+                  )),
+              const SizedBox(width: 8),
+              Expanded(child: _field(minStock, 'Mínimo', number: true)),
+            ]),
+            if (widget.item != null) ...[
+              const SizedBox(height: 8),
+              const Text('Para modificar existencias, registra un movimiento de inventario. Así se conserva el historial.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+            ],
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: _field(cost, 'Costo', number: true, onChanged: (_) => setState(() {}))),
+              const SizedBox(width: 8),
+              Expanded(child: _field(price, 'Precio', number: true, onChanged: (_) => setState(() {}))),
+            ]),
+            if (priceChanged) ...[
+              const SizedBox(height: 12),
+              _field(priceReason, 'Motivo del cambio de precio', required: true, lines: 2),
+              const SizedBox(height: 4),
+              const Text('El cambio quedará registrado con el usuario, precio anterior y nuevo precio.',
+                style: TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+            ],
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: pricingMethod,
+              decoration: const InputDecoration(labelText: 'Regla para sugerir precio'),
+              items: const [
+                DropdownMenuItem(value: ProductPricingRules.directCost, child: Text('Costo directo')),
+                DropdownMenuItem(value: ProductPricingRules.fixedProfit, child: Text('Ganancia fija')),
+                DropdownMenuItem(value: ProductPricingRules.percentageProfit, child: Text('% sobre costo')),
+                DropdownMenuItem(value: ProductPricingRules.percentageSale, child: Text('% de margen sobre venta')),
+              ],
+              onChanged: (value) => setState(() { pricingMethod = value ?? ProductPricingRules.percentageProfit; }),
+            ),
+            if (pricingMethod != ProductPricingRules.directCost) ...[
+              const SizedBox(height: 12),
+              _field(pricingValue, pricingMethod == ProductPricingRules.fixedProfit ? 'Ganancia fija (\$)' : 'Porcentaje (%)',
+                number: true, onChanged: (_) => setState(() {})),
+            ],
+            const SizedBox(height: 8),
+            Text(pricingHelp, style: const TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+            const SizedBox(height: 5),
+            Row(children: [
+              Expanded(child: Text(suggestedPrice == null
+                ? 'Revisa costo y porcentaje para calcular.'
+                : 'Precio sugerido: ${_money(suggestedPrice)}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: eShokPurple))),
+              TextButton.icon(
+                onPressed: suggestedPrice == null ? null : () => setState(() { price.text = suggestedPrice!.toStringAsFixed(2); }),
+                icon: const Icon(Icons.calculate_outlined, size: 16),
+                label: const Text('Aplicar'),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            _field(location, 'Ubicación'),
+          ],
+        ),
+      ),
+    ),
+    bottomNavigationBar: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: FilledButton.icon(
+          onPressed: () async {
+            if (!form.currentState!.validate()) return;
+            try {
+              await widget.store.saveInventoryItem(
+                id: widget.item?['id'] as int?, sku: sku.text, barcode: barcode.text,
+                name: name.text, category: category.text,
+                stock: widget.item == null ? val(stock) : _num(widget.item?['stock']),
+                minStock: val(minStock), cost: val(cost), price: val(price),
+                location: location.text, priceChangeReason: priceReason.text,
+              );
+              if (context.mounted) Navigator.pop(context, true);
+            } catch (error) {
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+            }
+          },
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Guardar artículo'),
+        ),
+      ),
+    ),
+  );
 }
 
 class StockDialog extends StatefulWidget {
@@ -227,7 +489,56 @@ class _StockDialogState extends State<StockDialog> {
   @override
   void dispose() { qty.dispose(); reason.dispose(); super.dispose(); }
   @override
-  Widget build(BuildContext context) => AlertDialog(title: const Text('Movimiento de inventario'), content: Column(mainAxisSize: MainAxisSize.min, children: [Text(_str(widget.item['name']), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 5), Text('Existencia actual: ${_num(widget.item['stock'])}', style: const TextStyle(color: Color(0xFF857B91))), const SizedBox(height: 12), SegmentedButton<bool>(segments: const [ButtonSegment(value: true, label: Text('Entrada'), icon: Icon(Icons.add)), ButtonSegment(value: false, label: Text('Salida'), icon: Icon(Icons.remove))], selected: {incoming}, onSelectionChanged: (s) => setState(() => incoming = s.first)), const SizedBox(height: 9), TextField(controller: qty, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Cantidad')), const SizedBox(height: 8), TextField(controller: reason, decoration: const InputDecoration(labelText: 'Motivo'))]), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')), FilledButton(onPressed: () async { final q = double.tryParse(qty.text) ?? 0; if (q <= 0 || reason.text.trim().isEmpty) return; try { await widget.store.adjustInventory(widget.item['id'] as int, incoming ? q : -q, reason.text); if (context.mounted) Navigator.pop(context, true); } catch (e) { if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'))); } }, child: const Text('Aplicar'))]);
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      leading: IconButton(onPressed: () => Navigator.pop(context, false), icon: const Icon(Icons.arrow_back)),
+      title: const Text('Movimiento de inventario'),
+    ),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(_str(widget.item['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+        const SizedBox(height: 5),
+        Text('Existencia actual: ${_num(widget.item['stock'])}', style: const TextStyle(color: Color(0xFF857B91))),
+        const SizedBox(height: 18),
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(value: true, label: Text('Entrada'), icon: Icon(Icons.add)),
+            ButtonSegment(value: false, label: Text('Salida'), icon: Icon(Icons.remove)),
+          ],
+          selected: {incoming},
+          onSelectionChanged: (s) => setState(() => incoming = s.first),
+        ),
+        const SizedBox(height: 14),
+        TextField(controller: qty, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Cantidad')),
+        const SizedBox(height: 12),
+        TextField(controller: reason, maxLines: 2, decoration: const InputDecoration(labelText: 'Motivo')),
+      ],
+    ),
+    bottomNavigationBar: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: FilledButton.icon(
+          onPressed: () async {
+            final q = double.tryParse(qty.text.replaceAll(',', '.')) ?? 0;
+            if (q <= 0 || reason.text.trim().isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Indica una cantidad válida y el motivo.')));
+              return;
+            }
+            try {
+              await widget.store.adjustInventory(widget.item['id'] as int, incoming ? q : -q, reason.text);
+              if (context.mounted) Navigator.pop(context, true);
+            } catch (e) {
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+            }
+          },
+          icon: const Icon(Icons.check),
+          label: const Text('Aplicar movimiento'),
+        ),
+      ),
+    ),
+  );
 }
 
 class InventoryPriceHistoryDialog extends StatelessWidget {
@@ -240,59 +551,48 @@ class InventoryPriceHistoryDialog extends StatelessWidget {
   final Map<String, Object?> item;
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text('Historial de precio · ${_str(item['name'])}'),
-    content: SizedBox(
-      width: 420,
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back)),
+      title: const Text('Historial de precios'),
+    ),
+    body: SafeArea(
       child: FutureBuilder<List<Map<String, Object?>>>(
         future: store.inventoryPriceHistory(item['id'] as int),
         builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Text('No se pudo cargar el historial: ${snapshot.error}');
-          }
+          if (snapshot.hasError) return Center(child: Text('No se pudo cargar el historial: ${snapshot.error}'));
           if (!snapshot.hasData) {
-            return const SizedBox(
-              height: 100,
-              child: Center(child: CircularProgressIndicator()),
-            );
+            return const Center(child: CircularProgressIndicator());
           }
           final rows = snapshot.data!;
           if (rows.isEmpty) {
-            return const Text('Este artículo todavía no tiene cambios de precio registrados.');
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Este artículo todavía no tiene cambios de precio registrados.'),
+              ),
+            );
           }
-          return SizedBox(
-            height: 360,
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: rows.length,
-              separatorBuilder: (_, __) => const Divider(height: 16),
-              itemBuilder: (context, index) {
-                final row = rows[index];
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${_money(row['old_price'])}  →  ${_money(row['new_price'])}',
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${_str(row['changed_by_name'], 'Usuario')} · ${_date(row['created_at'])}',
-                      style: const TextStyle(fontSize: 9, color: Color(0xFF81778D)),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(_str(row['reason']), style: const TextStyle(fontSize: 10)),
-                  ],
-                );
-              },
-            ),
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: rows.length,
+            separatorBuilder: (_, _) => const Divider(height: 20),
+            itemBuilder: (context, index) {
+              final row = rows[index];
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('${_money(row['old_price'])}  →  ${_money(row['new_price'])}',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 5),
+                  child: Text('${_str(row['changed_by_name'], 'Usuario')} · ${_date(row['created_at'])}\n${_str(row['reason'])}'),
+                ),
+              );
+            },
           );
         },
       ),
     ),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
-    ],
   );
 }
 

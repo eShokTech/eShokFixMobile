@@ -57,7 +57,7 @@ class AuthService {
     },
     'CAJA': {
       'dashboard.view', 'clients.view', 'settings.read', 'orders.view', 'orders.pay', 'orders.payments.view',
-      'sales.view', 'sales.manage', 'cash.view', 'cash.manage',
+      'inventory.view', 'sales.view', 'sales.manage', 'cash.view', 'cash.manage',
       'warranties.view', 'reports.view',
     },
   };
@@ -256,13 +256,28 @@ class AuthService {
     await _secureStorage.delete(key: sessionKey);
   }
 
+  Future<List<Map<String, Object?>>> loginOptions() async {
+    return db.rawQuery("""
+      SELECT users.username, users.display_name, users.role,
+        CASE WHEN users.id = (
+          SELECT id FROM users WHERE UPPER(role)='ADMIN' ORDER BY id ASC LIMIT 1
+        ) THEN 1 ELSE 0 END AS is_primary_admin
+      FROM users
+      WHERE users.active=1 AND COALESCE(users.password_hash,'') != ''
+      ORDER BY users.display_name COLLATE NOCASE
+    """);
+  }
+
   Future<List<Map<String, Object?>>> users() async {
     await _requirePermission('users.manage');
-    return db.query(
-    'users',
-    columns: ['id', 'username', 'display_name', 'role', 'active', 'created_at', 'last_login_at'],
-    orderBy: 'display_name',
-  );
+    return db.rawQuery("""
+      SELECT users.*,
+        CASE WHEN users.id = (
+          SELECT id FROM users WHERE UPPER(role)='ADMIN' ORDER BY id ASC LIMIT 1
+        ) THEN 1 ELSE 0 END AS protected_admin
+      FROM users
+      ORDER BY display_name COLLATE NOCASE
+    """);
   }
 
   Future<void> createUser({
@@ -322,6 +337,62 @@ class AuthService {
           {'revoked_at': DateTime.now().toIso8601String()},
           where: 'user_id=? AND revoked_at IS NULL', whereArgs: [id]);
     }
+  }
+
+  Future<void> deleteUser(int userId) async {
+    await _requirePermission('users.manage');
+    final token = await _secureStorage.read(key: sessionKey);
+    if (token == null || token.isEmpty) {
+      throw StateError('Inicia sesión para administrar usuarios.');
+    }
+    final digest = sha256.convert(utf8.encode(token)).toString();
+    final sessionRows = await db.query(
+      'auth_sessions',
+      columns: ['user_id'],
+      where: 'token_hash=? AND revoked_at IS NULL',
+      whereArgs: [digest],
+      limit: 1,
+    );
+    if (sessionRows.isEmpty) throw StateError('La sesión ya no es válida.');
+    final currentUserId = sessionRows.first['user_id'] as int;
+    if (userId == currentUserId) {
+      throw StateError('No puedes eliminar la cuenta con la que tienes iniciada sesión.');
+    }
+
+    await db.transaction((tx) async {
+      final targets = await tx.query(
+        'users',
+        columns: ['id', 'role', 'username'],
+        where: 'id=?',
+        whereArgs: [userId],
+        limit: 1,
+      );
+      if (targets.isEmpty) throw StateError('Usuario no encontrado.');
+
+      final target = targets.first;
+      if ((target['role'] as String).toUpperCase() == 'ADMIN') {
+        final originalAdmins = await tx.query(
+          'users',
+          columns: ['id'],
+          where: "UPPER(role)='ADMIN'",
+          orderBy: 'id ASC',
+          limit: 1,
+        );
+        if (originalAdmins.isNotEmpty && originalAdmins.first['id'] == userId) {
+          throw StateError('La cuenta administradora original está protegida y no se puede eliminar.');
+        }
+      }
+
+      await tx.update(
+        'inventory_price_history',
+        {'changed_by': null},
+        where: 'changed_by=?',
+        whereArgs: [userId],
+      );
+      await tx.delete('auth_sessions', where: 'user_id=?', whereArgs: [userId]);
+      final deleted = await tx.delete('users', where: 'id=?', whereArgs: [userId]);
+      if (deleted != 1) throw StateError('No se pudo eliminar el usuario.');
+    });
   }
 
   Future<void> resetPassword(int userId, String newPassword) async {

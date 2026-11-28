@@ -1,5 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -10,10 +13,13 @@ import 'package:printing/printing.dart';
 import '../data/local_store.dart';
 import '../data/auth_service.dart';
 import '../data/database_backup_service.dart';
+import '../data/app_update_service.dart';
 import 'package:flutter/services.dart';
 import '../domain/workflow.dart';
 import '../domain/financial_rules.dart';
 import '../domain/pricing_rules.dart';
+import '../domain/pos_checkout_rules.dart';
+import '../domain/pos_wholesale_rules.dart';
 import 'theme.dart';
 import 'brand_logo.dart';
 
@@ -52,6 +58,8 @@ class EShokFixShell extends StatefulWidget {
 
 class _EShokFixShellState extends State<EShokFixShell> {
   String _view = 'inicio';
+  final TextEditingController _globalSearchController = TextEditingController();
+  String _globalSearchQuery = '';
   late Future<int> _notificationCountFuture;
 
   @override
@@ -73,14 +81,31 @@ class _EShokFixShellState extends State<EShokFixShell> {
     if (!mounted) return;
     setState(() => _notificationCountFuture = _loadNotificationCount());
   }
+
+  void _onGlobalSearchChanged(String value) {
+    if (!_canOpen('busqueda')) {
+      _open('busqueda');
+      return;
+    }
+    setState(() {
+      _globalSearchQuery = value;
+      _view = 'busqueda';
+    });
+  }
+
+  @override
+  void dispose() {
+    _globalSearchController.dispose();
+    super.dispose();
+  }
   bool _canOpen(String view) {
     final permission = switch (view) {
       'inicio' => 'dashboard.view',
       'ordenes' => 'orders.view',
       'clientes' => 'clients.view',
       'inventario' => 'inventory.view',
-      'pos' => 'sales.view',
-      'caja' => 'cash.view',
+      'pos' || 'caja' => 'sales.view',
+      'cortes' => 'cash.view',
       'compras' => 'purchases.view',
       'garantias' => 'warranties.view',
       'reportes' => 'reports.view',
@@ -103,17 +128,9 @@ class _EShokFixShellState extends State<EShokFixShell> {
     setState(() => _view = view);
   }
   int get _selectedNav => switch (_view) {
-    'inicio' => 0, 'ordenes' => 1, 'clientes' => 2, 'caja' => 3, _ => 4,
+    'inicio' => 0, 'ordenes' => 1, 'clientes' => 2, 'caja' || 'pos' => 3, _ => 4,
   };
-  String get _title => switch (_view) {
-    'inicio' => 'Inicio', 'ordenes' => 'Órdenes de servicio', 'clientes' => 'Clientes',
-    'inventario' => 'Inventario', 'mas' => 'Más módulos', 'pos' => 'Punto de venta',
-    'caja' => 'Caja y cortes', 'garantias' => 'Garantías', 'reportes' => 'Reportes',
-    'usuarios' => 'Usuarios y permisos', 'configuracion' => 'Configuración',
-    'whatsapp' => 'Eventos WhatsApp', 'licencias' => 'Licenciamiento', 'compras' => 'Compras y proveedores',
-    'busqueda' => 'Búsqueda global', 'notificaciones' => 'Notificaciones',
-    _ => 'eShokFix',
-  };
+
 
   @override
   Widget build(BuildContext context) {
@@ -122,8 +139,8 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'ordenes' => OrdersPage(store: widget.store),
       'clientes' => ClientsPage(store: widget.store),
       'inventario' => InventoryPage(store: widget.store),
-      'pos' => SalesPage(store: widget.store),
-      'caja' => CashPage(store: widget.store, open: _open),
+      'pos' || 'caja' => SalesPage(store: widget.store),
+      'cortes' => CashPage(store: widget.store),
       'garantias' => WarrantiesPage(store: widget.store),
       'reportes' => ReportsPage(store: widget.store),
       'usuarios' => UsersPage(store: widget.store, currentUser: widget.authUser),
@@ -131,7 +148,7 @@ class _EShokFixShellState extends State<EShokFixShell> {
       'whatsapp' => WhatsAppEventsPage(store: widget.store),
       'licencias' => const LicensePage(),
       'compras' => PurchasesPage(store: widget.store),
-      'busqueda' => GlobalSearchPage(store: widget.store, open: _open),
+      'busqueda' => GlobalSearchPage(key: ValueKey(_globalSearchQuery), store: widget.store, open: _open, query: _globalSearchQuery),
       'notificaciones' => NotificationsPage(
         store: widget.store,
         open: _open,
@@ -141,16 +158,89 @@ class _EShokFixShellState extends State<EShokFixShell> {
     };
     return Scaffold(
       appBar: AppBar(
-        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(_title),
-          const Text('eShokFix  ·  OPERACIÓN DEL TALLER', style: TextStyle(fontSize: 9, letterSpacing: 1.25, color: Color(0xFF8C819A), fontWeight: FontWeight.w700)),
-        ]),
-        actions: [
-          IconButton(
-            tooltip: 'Búsqueda global',
-            onPressed: () => _open('busqueda'),
-            icon: const Icon(Icons.search, color: eShokPurple),
+        leadingWidth: 52,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: PopupMenuButton<String>(
+            tooltip: 'Cuenta de usuario',
+            onSelected: (value) {
+              if (value == 'switch' || value == 'logout') widget.onLogout();
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                enabled: false,
+                child: Text(widget.authUser.displayName,
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+              const PopupMenuDivider(),
+              const PopupMenuItem<String>(
+                value: 'switch',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.switch_account),
+                  title: Text('Cambiar de usuario'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.logout),
+                  title: Text('Cerrar sesión'),
+                ),
+              ),
+            ],
+            child: CircleAvatar(
+              radius: 18,
+              backgroundColor: eShokPurpleLight.withValues(alpha: .35),
+              child: const Icon(Icons.person_outline, color: eShokPurple, size: 22),
+            ),
           ),
+        ),
+        titleSpacing: 6,
+        title: SizedBox(
+          height: 42,
+          child: TextField(
+            controller: _globalSearchController,
+            textInputAction: TextInputAction.search,
+            onTap: () {
+              if (_view != 'busqueda') _open('busqueda');
+            },
+            onChanged: _onGlobalSearchChanged,
+            onSubmitted: (_) => _open('busqueda'),
+            decoration: InputDecoration(
+              hintText: 'Buscar en el taller',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: _globalSearchController.text.isEmpty ? null : IconButton(
+                tooltip: 'Limpiar búsqueda',
+                onPressed: () {
+                  _globalSearchController.clear();
+                  _onGlobalSearchChanged('');
+                },
+                icon: const Icon(Icons.close, size: 18),
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 9, horizontal: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: const BorderSide(color: eShokBorder),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: const BorderSide(color: eShokBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(15),
+                borderSide: const BorderSide(color: eShokPurple, width: 1.5),
+              ),
+            ),
+          ),
+        ),
+        actions: [
           FutureBuilder<int>(
             future: _notificationCountFuture,
             builder: (context, snapshot) {
@@ -166,16 +256,6 @@ class _EShokFixShellState extends State<EShokFixShell> {
               );
             },
           ),
-          IconButton(
-            tooltip: 'Modo local sin servidor conectado',
-            onPressed: () => _showInfo(context, 'Modo local', 'Los datos y operaciones de esta beta se guardan en el teléfono. La conexión con el futuro servidor propio y el licenciamiento todavía no están implementados.'),
-            icon: const Icon(Icons.cloud_off_outlined, color: eShokPurple),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 4),
-            child: Center(child: Text(widget.authUser.displayName, style: const TextStyle(fontSize: 10, color: Color(0xFF746A80)))),
-          ),
-          IconButton(tooltip: 'Cerrar sesión', onPressed: widget.onLogout, icon: const Icon(Icons.logout, color: eShokPurple)),
           const SizedBox(width: 6),
         ],
       ),
@@ -197,13 +277,6 @@ class _EShokFixShellState extends State<EShokFixShell> {
   }
 }
 
-void _showInfo(BuildContext context, String title, String message) {
-  showDialog<void>(context: context, builder: (ctx) => AlertDialog(
-    title: Text(title), content: Text(message),
-    actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendido'))],
-  ));
-}
-
 class PageFrame extends StatelessWidget {
   const PageFrame({super.key, required this.child, this.padding = const EdgeInsets.fromLTRB(16, 14, 16, 24)});
   final Widget child;
@@ -223,7 +296,7 @@ class SectionHeading extends StatelessWidget {
       Text(title, style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800, color: eShokInk)),
       if (subtitle != null) ...[const SizedBox(height: 3), Text(subtitle!, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: const Color(0xFF82788E)))],
     ])),
-    if (trailing != null) trailing!,
+    ?trailing,
   ]);
 }
 
@@ -318,10 +391,6 @@ class _DashboardPageState extends State<DashboardPage> {
           if (recent.isEmpty) const EmptyState(title: 'Aún no hay órdenes', message: 'Registra tu primer equipo para comenzar.'),
           ...recent.map((o) => OrderListTile(order: o, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailPage(store: widget.store, orderId: o['id'] as int))))),
           const SizedBox(height: 12),
-          GlassCard(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Icon(Icons.sync_problem_outlined, color: eShokPurple), const SizedBox(width: 10),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Sincronización pendiente', style: TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text('${d['pending_local']} movimientos registrados localmente. La conexión con el servidor de PC aún no está activa.', style: const TextStyle(fontSize: 11, color: Color(0xFF81768D), height: 1.35))])),
-          ])),
         ],
       ));
     },
@@ -401,10 +470,8 @@ class MorePage extends StatelessWidget {
       mainAxisSpacing: 10,
       crossAxisSpacing: 10,
       children: [
-        if (AuthService.can(role, 'dashboard.view')) ...[
-          _moduleTile(context, 'Búsqueda global', 'Clientes, folios, equipos y productos', Icons.search, 'busqueda', open),
-          _moduleTile(context, 'Notificaciones', 'Pendientes y alertas del taller', Icons.notifications_outlined, 'notificaciones', open),
-        ],
+        if (AuthService.can(role, 'cash.view'))
+          _moduleTile(context, 'Cortes de caja', 'Movimientos, efectivo y arqueos', Icons.lock_clock_outlined, 'cortes', open),
         if (AuthService.can(role, 'inventory.view'))
           _moduleTile(context, 'Inventario', 'Productos y existencias', Icons.inventory_2_outlined, 'inventario', open),
         if (AuthService.can(role, 'purchases.view'))

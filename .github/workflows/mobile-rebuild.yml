@@ -11,11 +11,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: eshokfix-mobile-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   verify-and-build:
@@ -26,29 +26,69 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: '17'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.7'
+          flutter-version: '3.50.0'
           cache: true
 
       - name: Resolve packages
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze --no-pub --no-fatal-infos
+        run: flutter analyze --no-pub --fatal-infos
 
       - name: Tests
         run: flutter test --no-pub
 
+      - name: Configure stable Android signing key
+        id: signing
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/mobile-navigation-pos-ux'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Signing secrets are missing; skipping update release."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/eshokfix-upload-key.jks
+          cat > android/key.properties <<EOF
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=eshokfix-upload-key.jks
+          EOF
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Apply approved eShokFix logo PNG without alterations
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE="assets/branding/eshokfix_logo.png"
+          RES="android/app/src/main/res"
+          test -s "$SOURCE"
+          mkdir -p "$RES/drawable-nodpi"
+          cp "$SOURCE" "$RES/drawable-nodpi/eshokfix_logo_foreground.png"
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            mkdir -p "$RES/mipmap-$density"
+            cp "$SOURCE" "$RES/mipmap-$density/ic_launcher.png"
+            cp "$SOURCE" "$RES/mipmap-$density/ic_launcher_round.png"
+          done
+          echo "Copied the approved PNG byte-for-byte. No crop, recolor, redraw, or decoration."
       - name: Build debug APK
-        run: flutter build apk --debug --no-pub
+        if: steps.signing.outputs.ready == 'true'
+        run: flutter build apk --debug --no-pub --build-number "${GITHUB_RUN_NUMBER}"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -57,3 +97,78 @@ jobs:
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+      - name: Build signed update APK
+        if: steps.signing.outputs.ready == 'true'
+        run: flutter build apk --release --build-number "${GITHUB_RUN_NUMBER}" --build-name "0.0.1.003" --dart-define=ESHOKFIX_VERSION="0.0.1.003"
+
+      - name: Name update APK
+        if: steps.signing.outputs.ready == 'true'
+        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk
+
+      - name: Verify update package and shared signing certificate
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+          DEBUG_APK="build/app/outputs/flutter-apk/app-debug.apk"
+          RELEASE_APK="build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk"
+          test -s "$DEBUG_APK"
+          test -s "$RELEASE_APK"
+          "$APKSIGNER" verify "$DEBUG_APK"
+          "$APKSIGNER" verify "$RELEASE_APK"
+          "$APKSIGNER" verify --print-certs "$DEBUG_APK" | tee /tmp/debug-certificate.txt
+          "$APKSIGNER" verify --print-certs "$RELEASE_APK" | tee /tmp/release-certificate.txt
+          DEBUG_CERT="$(sed -n 's/.*certificate SHA-256 digest: //p' /tmp/debug-certificate.txt | head -n1)"
+          RELEASE_CERT="$(sed -n 's/.*certificate SHA-256 digest: //p' /tmp/release-certificate.txt | head -n1)"
+          test -n "$DEBUG_CERT"
+          test -n "$RELEASE_CERT"
+          echo "Debug signer SHA-256: $DEBUG_CERT"
+          echo "Release signer SHA-256: $RELEASE_CERT"
+          test "$DEBUG_CERT" = "$RELEASE_CERT"
+          PACKAGE_INFO="$("$AAPT" dump badging "$RELEASE_APK" | head -n1)"
+          echo "Release package metadata: $PACKAGE_INFO"
+          echo "$PACKAGE_INFO" | grep -Fq "package: name='com.eshokfix.mobile'"
+          echo "Both APKs are valid, use the same signing certificate, and target the expected package."
+      - name: Validate signed update APK without hosted emulator
+        if: steps.signing.outputs.ready == 'true'
+        shell: bash
+        env:
+          EXPECTED_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
+          APK="build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk"
+          test -s "$APK"
+          "$BUILD_TOOLS/apksigner" verify "$APK"
+          PACKAGE_INFO="$("$BUILD_TOOLS/aapt" dump badging "$APK")"
+          printf '%s\\n' "$PACKAGE_INFO" | grep -F "package: name='com.eshokfix.mobile'"
+          printf '%s\\n' "$PACKAGE_INFO" | grep -F "versionCode='$EXPECTED_VERSION_CODE'"
+          echo "Signed update APK validated. Hosted runner has no KVM, so emulator installation is not available here."
+
+      - name: Upload stable signed APK
+        if: steps.signing.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: eShokFix-Mobile-stable
+          path: build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk
+          if-no-files-found: error
+          retention-days: 14
+
+
+      - name: Publish in-app update
+        if: steps.signing.outputs.ready == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mobile-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: eShokFix Mobile ${{ github.run_number }}
+          body: |
+            Version: 0.0.1.003
+            - Eliminación segura de usuarios, con protección de la cuenta administradora original.
+            - Acceso biométrico exclusivo del administrador principal; los demás usuarios usan PIN.
+            - Icono Android actualizado con el logotipo PNG oficial de eShokFix.
+          files: build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk
+          make_latest: true

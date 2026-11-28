@@ -47,6 +47,7 @@ extension LocalStoreSalesOperations on LocalStore {
     double discount = 0,
     List<Map<String, Object?>>? paymentBreakdown,
     String notes = '',
+    String paymentReference = '',
   }) async {
     requirePermission('sales.manage');
     
@@ -152,11 +153,11 @@ extension LocalStoreSalesOperations on LocalStore {
         final amount = part['amount'] as double;
         await tx.insert('sale_payments', {
           'sale_id': saleId, 'method': method, 'amount': amount,
-          'reference': '', 'created_at': now,
+          'reference': paymentReference.trim(), 'created_at': now,
         });
         await tx.insert('cash_movements', {
           'movement_type': 'IN', 'amount': amount,
-          'concept': 'Venta POS $folio', 'reference': method,
+          'concept': 'Venta POS $folio', 'reference': paymentReference.trim().isEmpty ? method : paymentReference.trim(),
           'created_at': now, 'related_sale_id': saleId,
           'payment_method': method,
         });
@@ -172,7 +173,7 @@ extension LocalStoreSalesOperations on LocalStore {
         'payload': jsonEncode({
           'folio': folio, 'client_id': clientId, 'subtotal': subtotal,
           'discount': normalizedDiscount, 'total': total, 'method': storedMethod,
-          'payment_breakdown': tender, 'items': prepared,
+          'payment_breakdown': tender, 'payment_reference': paymentReference.trim(), 'items': prepared,
         }),
         'created_at': now,
       });

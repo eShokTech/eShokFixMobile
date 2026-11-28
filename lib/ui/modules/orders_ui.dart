@@ -18,7 +18,11 @@ class _OrdersPageState extends State<OrdersPage> {
   void dispose() { _search.dispose(); super.dispose(); }
   Future<void> _newOrder() async {
     final created = await showDialog<bool>(context: context, builder: (_) => NewOrderDialog(store: widget.store));
-    if (created == true && mounted) setState(_refresh);
+    if (created == true && mounted) {
+      final freshOrders = await widget.store.orders(query: _search.text, status: _status);
+      if (!mounted) return;
+      setState(() => _future = Future.value(freshOrders));
+    }
   }
   @override
   Widget build(BuildContext context) => PageFrame(child: Column(children: [
@@ -36,7 +40,16 @@ class _OrdersPageState extends State<OrdersPage> {
       if (rows.isEmpty) return const EmptyState(title: 'No hay expedientes', message: 'Prueba otra búsqueda o registra una nueva orden.');
       return RefreshIndicator(onRefresh: () async => setState(_refresh), child: ListView.builder(physics: const AlwaysScrollableScrollPhysics(), itemCount: rows.length, itemBuilder: (_, i) {
         final row = rows[i];
-        return OrderListTile(order: row, onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailPage(store: widget.store, orderId: row['id'] as int))); if (mounted) setState(_refresh); });
+        return OrderListTile(order: row, onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => OrderDetailPage(store: widget.store, orderId: row['id'] as int)),
+          );
+          if (!mounted) return;
+          final freshOrders = await widget.store.orders(query: _search.text, status: _status);
+          if (!mounted) return;
+          setState(() => _future = Future.value(freshOrders));
+        });
       }));
     })),
   ]));
@@ -75,11 +88,13 @@ class _NewOrderDialogState extends State<NewOrderDialog> {
   Future<void> _loadClients() async {
     final rows = await widget.store.clients();
     final warrantyDays = await widget.store.setting('default_warranty_days', fallback: '30');
-    if (mounted) setState(() {
+    if (mounted) {
+      setState(() {
       _clients = rows;
       _clientId ??= rows.isNotEmpty ? rows.first['id'] as int : null;
       _warranty.text = warrantyDays;
     });
+    }
   }
   @override
   void dispose() { for (final c in [_brand,_model,_failure,_condition,_accessories,_technician,_imei,_serial,_labor,_parts,_discount,_deposit,_notes,_warranty]) { c.dispose(); } super.dispose(); }
@@ -100,8 +115,8 @@ class _NewOrderDialogState extends State<NewOrderDialog> {
     content: SizedBox(width: 520, child: SingleChildScrollView(child: Form(key: _form, child: Column(mainAxisSize: MainAxisSize.min, children: [
       if (_clients.isEmpty) ...[
         const Text('Primero registra un cliente para abrir el expediente.'),
-        Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () async { final id = await showDialog<int>(context: context, builder: (_) => ClientFormDialog(store: widget.store)); if (id != null) { await _loadClients(); setState(() => _clientId = id); } }, icon: const Icon(Icons.person_add_alt_1), label: const Text('Crear cliente'))),
-      ] else DropdownButtonFormField<int>(value: _clientId, decoration: const InputDecoration(labelText: 'Cliente'), items: _clients.map((c) => DropdownMenuItem(value: c['id'] as int, child: Text(_str(c['name']), overflow: TextOverflow.ellipsis))).toList(), onChanged: (v) => setState(() => _clientId = v)),
+        Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: () async { final id = await Navigator.push<int>(context, MaterialPageRoute(builder: (_) => ClientFormDialog(store: widget.store))); if (id != null) { await _loadClients(); setState(() => _clientId = id); } }, icon: const Icon(Icons.person_add_alt_1), label: const Text('Crear cliente'))),
+      ] else DropdownButtonFormField<int>(initialValue: _clientId, decoration: const InputDecoration(labelText: 'Cliente'), items: _clients.map((c) => DropdownMenuItem(value: c['id'] as int, child: Text(_str(c['name']), overflow: TextOverflow.ellipsis))).toList(), onChanged: (v) => setState(() => _clientId = v)),
       const SizedBox(height: 10), MediaQuery.sizeOf(context).width < 420
         ? Column(children: [_field(_brand, 'Marca', required: true), const SizedBox(height: 8), _field(_model, 'Modelo', required: true)])
         : Row(children: [Expanded(child: _field(_brand, 'Marca', required: true)), const SizedBox(width: 8), Expanded(child: _field(_model, 'Modelo', required: true))]),
@@ -291,9 +306,11 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
       );
       if (mounted) setState(_refresh);
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$e')),
       );
+      }
     }
   }
 
@@ -402,9 +419,11 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
         );
         if (mounted) setState(_refresh);
       } catch (error) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$error')),
         );
+        }
       }
     }
     amount.dispose();
@@ -413,27 +432,69 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   }
   Future<void> _evidence() async {
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.camera, imageQuality: 82, maxWidth: 1600);
-    if (image == null) return;
+    final image = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 82,
+      maxWidth: 1600,
+    );
+    if (image == null || !mounted) return;
+
     final docs = await getApplicationDocumentsDirectory();
+    if (!mounted) return;
     final evidenceDir = Directory(p.join(docs.path, 'evidence'));
     await evidenceDir.create(recursive: true);
-    final safeCopy = await File(image.path).copy(p.join(evidenceDir.path, 'order_${widget.orderId}_${DateTime.now().microsecondsSinceEpoch}.jpg'));
+    if (!mounted) return;
+    final safeCopy = await File(image.path).copy(
+      p.join(
+        evidenceDir.path,
+        'order_${widget.orderId}_${DateTime.now().microsecondsSinceEpoch}.jpg',
+      ),
+    );
+    if (!mounted) return;
+
     final caption = TextEditingController();
-    final result = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(title: const Text('Descripción de evidencia'), content: TextField(controller: caption, decoration: const InputDecoration(labelText: 'Ej. Estado al recibir, daño, reparación')), actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Guardar foto'))]));
-    if (result == true) { await widget.store.addEvidence(widget.orderId, safeCopy.path, caption.text); if (mounted) setState(_refresh); }
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Descripción de evidencia'),
+          content: TextField(
+            controller: caption,
+            decoration: const InputDecoration(
+              labelText: 'Ej. Estado al recibir, daño, reparación',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Guardar foto'),
+            ),
+          ],
+        ),
+      );
+      if (result == true) {
+        await widget.store.addEvidence(widget.orderId, safeCopy.path, caption.text);
+        if (mounted) setState(_refresh);
+      }
+    } finally {
+      caption.dispose();
+    }
   }
   Future<void> _printTicket(Map<String, Object?> o) async {
     final shopName = await widget.store.setting('shop_name', fallback: 'eShokFix');
     final doc = pw.Document();
     doc.addPage(pw.Page(pageFormat: PdfPageFormat.roll80, margin: const pw.EdgeInsets.all(12), build: (_) => pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-      pw.Center(child: pw.Text(shopName, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))),
+      pw.Center(child: pw.Text(shopName, style: const pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))),
       pw.Center(child: pw.Text('Comprobante de servicio', style: const pw.TextStyle(fontSize: 9))), pw.SizedBox(height: 10), pw.Divider(),
       pw.Text('Folio: ${o['folio']}'), pw.Text('Cliente: ${o['client_name']}'), pw.Text('Equipo: ${_str(o['brand'])} ${_str(o['model'])}'),
       pw.Text('IMEI/Serie: ${_str(o['imei']).isEmpty ? _str(o['serial'], 'No registrado') : _str(o['imei'])}'),
       pw.Text('Falla reportada: ${o['failure_description']}'), pw.Text('Diagnóstico: ${_str(o['diagnosis'], 'Pendiente')}'),
       pw.Divider(), pw.Text('Mano de obra: ${_money(o['labor'])}'), pw.Text('Refacciones: ${_money(o['parts_total'])}'),
-      pw.Text('Descuento: ${_money(o['discount'])}'), pw.Text('TOTAL: ${_money(o['total'])}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+      pw.Text('Descuento: ${_money(o['discount'])}'), pw.Text('TOTAL: ${_money(o['total'])}', style: const pw.TextStyle(fontWeight: pw.FontWeight.bold)),
       pw.Text('Pagado: ${_money(o['paid'])}'), pw.Text('Saldo: ${_money(_num(o['total']) - _num(o['paid']))}'),
       pw.Divider(), pw.Text('Garantía: ${o['warranty_days']} días a partir de la entrega.'),
       pw.SizedBox(height: 10), pw.Center(child: pw.Text('Gracias por confiar en nosotros', style: const pw.TextStyle(fontSize: 8))),
@@ -458,7 +519,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           const SizedBox(height: 12), Text('Recibido: ${_date(o['received_at'])}', style: const TextStyle(fontSize: 11, color: Color(0xFF877D93))),
         ])),
         const SizedBox(height: 12),
-        SectionHeading('Flujo de trabajo', subtitle: 'Las transiciones no válidas se bloquean'),
+        const SectionHeading('Flujo de trabajo', subtitle: 'Las transiciones no válidas se bloquean'),
         const SizedBox(height: 8),
         GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (_can('orders.manage')) Wrap(spacing: 7, runSpacing: 7, children: OrderWorkflow.transitions[status]!.where((next) => next != 'CANCELADO').map((next) {
@@ -512,7 +573,7 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           if (_can('orders.manage')) OutlinedButton.icon(onPressed: () => _diagnosis(_str(o['diagnosis']), _str(o['notes'])), icon: const Icon(Icons.edit_note), label: const Text('Editar diagnóstico y notas')),
         ])),
         const SizedBox(height: 12),
-        SectionHeading('Información del equipo'),
+        const SectionHeading('Información del equipo'),
         const SizedBox(height: 8),
         GlassCard(child: Column(children: [
           _detail('Falla reportada', _str(o['failure_description'])), _detail('Diagnóstico', _str(o['diagnosis'], 'Pendiente')), _detail('IMEI', _str(o['imei'], 'No registrado')), _detail('Serie', _str(o['serial'], 'No registrada')), _detail('Color', _str(o['color'], 'No registrado')), _detail('Accesorios', _str(o['accessories'], 'No registrados')), _detail('Estado físico', _str(o['condition_note'], 'No registrado')), _detail('Técnico', _str(o['technician'], 'Sin asignar')),
@@ -532,10 +593,12 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           builder: (context, partsSnap) {
             if (!partsSnap.hasData) return const LinearProgressIndicator();
             final rows = partsSnap.data!;
-            if (rows.isEmpty) return const EmptyState(
+            if (rows.isEmpty) {
+              return const EmptyState(
               title: 'Sin refacciones asignadas',
               message: 'Las piezas agregadas aquí descuentan existencias y se suman al total de la orden.',
             );
+            }
             return GlassCard(child: Column(children: rows.map((part) => ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
@@ -547,11 +610,11 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           },
         ),
         const SizedBox(height: 12),
-        SectionHeading('Cobros y garantía'),
+        const SectionHeading('Cobros y garantía'),
         const SizedBox(height: 8),
         GlassCard(child: Column(children: [
           _detail('Mano de obra', _money(o['labor'])), _detail('Refacciones', _money(o['parts_total'])), _detail('Descuento', _money(o['discount'])), _detail('Total', _money(o['total'])), _detail('Pagado', _money(o['paid'])),
-          Row(children: [Expanded(child: Text('Saldo pendiente', style: const TextStyle(fontWeight: FontWeight.w800))), Text(_money(balance), style: TextStyle(fontWeight: FontWeight.w900, color: balance > 0 ? const Color(0xFFBA6D2B) : const Color(0xFF258A62)))]),
+          Row(children: [const Expanded(child: Text('Saldo pendiente', style: TextStyle(fontWeight: FontWeight.w800))), Text(_money(balance), style: TextStyle(fontWeight: FontWeight.w900, color: balance > 0 ? const Color(0xFFBA6D2B) : const Color(0xFF258A62)))]),
           const SizedBox(height: 10), Row(children: [if (_can('orders.pay')) Expanded(child: FilledButton.icon(onPressed: balance > 0 ? () => _payment(balance) : null, icon: const Icon(Icons.payments_outlined), label: const Text('Registrar pago'))), if (_can('orders.pay')) const SizedBox(width: 8), IconButton.filledTonal(onPressed: () => _printTicket(o), icon: const Icon(Icons.print_outlined), tooltip: 'Imprimir / PDF')]),
           Align(alignment: Alignment.centerLeft, child: Text('Garantía al entregar: ${o['warranty_days']} días', style: const TextStyle(fontSize: 10, color: Color(0xFF867C91)))),
         ])),
@@ -563,10 +626,12 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           builder: (context, paymentSnap) {
             if (!paymentSnap.hasData) return const LinearProgressIndicator();
             final rows = paymentSnap.data!;
-            if (rows.isEmpty) return const EmptyState(
+            if (rows.isEmpty) {
+              return const EmptyState(
               title: 'Sin pagos registrados',
               message: 'Los anticipos y abonos aparecerán en este historial.',
             );
+            }
             return GlassCard(child: Column(children: rows.map((payment) => ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
@@ -592,18 +657,18 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
           },
         ),
         const SizedBox(height: 12),
-        Row(children: [Expanded(child: SectionHeading('Evidencias')), if (_can('orders.manage')) FilledButton.tonalIcon(onPressed: _evidence, icon: const Icon(Icons.add_a_photo_outlined, size: 17), label: const Text('Tomar foto'))]),
+        Row(children: [const Expanded(child: SectionHeading('Evidencias')), if (_can('orders.manage')) FilledButton.tonalIcon(onPressed: _evidence, icon: const Icon(Icons.add_a_photo_outlined, size: 17), label: const Text('Tomar foto'))]),
         const SizedBox(height: 8),
         FutureBuilder<List<Map<String, Object?>>>(future: widget.store.orderEvidence(widget.orderId), builder: (context, evidenceSnap) {
           final rows = evidenceSnap.data ?? [];
           if (rows.isEmpty) return const EmptyState(title: 'Sin evidencias', message: 'Las fotografías que tomes quedarán asociadas a este expediente.');
           return Column(children: rows.map((e) => Padding(padding: const EdgeInsets.only(bottom: 8), child: GlassCard(child: Row(children: [
-            SizedBox(width: 72, height: 72, child: ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(File(_str(e['file_path'])), fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: Color(0xFFF0ECF6), child: Icon(Icons.broken_image_outlined, color: eShokPurple))))),
+            SizedBox(width: 72, height: 72, child: ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(File(_str(e['file_path'])), fit: BoxFit.cover, errorBuilder: (_, _, _) => const ColoredBox(color: Color(0xFFF0ECF6), child: Icon(Icons.broken_image_outlined, color: eShokPurple))))),
             const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_str(e['caption'], 'Evidencia'), style: const TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text(_date(e['created_at']), style: const TextStyle(fontSize: 10, color: Color(0xFF8A8095)))])),
           ])))).toList());
         }),
         const SizedBox(height: 12),
-        SectionHeading('Historial del expediente'), const SizedBox(height: 8),
+        const SectionHeading('Historial del expediente'), const SizedBox(height: 8),
         FutureBuilder<List<Map<String, Object?>>>(future: widget.store.orderEvents(widget.orderId), builder: (context, eventSnap) => Column(children: (eventSnap.data ?? []).map((e) => ListTile(dense: true, contentPadding: EdgeInsets.zero, leading: const Icon(Icons.radio_button_checked, color: eShokPurple, size: 18), title: Text(_str(e['description']), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)), subtitle: Text('${_date(e['created_at'])}  ·  ${_str(e['from_status'])} → ${_str(e['to_status'])}', style: const TextStyle(fontSize: 9)))).toList())),
         const SizedBox(height: 25),
       ]);

@@ -65,6 +65,15 @@ Future<void> _createAppNotificationsTable(DatabaseExecutor db) async {
   await db.execute('CREATE INDEX IF NOT EXISTS idx_app_notifications_active ON app_notifications(resolved_at, read_at, created_at)');
 }
 
+Future<void> _createPosDraftTicketsTable(DatabaseExecutor db) async {
+  await db.execute('''CREATE TABLE IF NOT EXISTS pos_draft_tickets(
+    id TEXT PRIMARY KEY,
+    payload_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )''');
+  await db.execute('CREATE INDEX IF NOT EXISTS idx_pos_draft_tickets_updated ON pos_draft_tickets(updated_at DESC)');
+}
+
 Future<void> _createOrderRefundTable(DatabaseExecutor db) async {
   await db.execute('''CREATE TABLE IF NOT EXISTS order_refunds(
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -229,7 +238,7 @@ class LocalStore {
     final root = await getDatabasesPath();
     final database = await openDatabase(
       p.join(root, 'eshokfix_mobile_v1.db'),
-      version: 11,
+      version: 13,
       onConfigure: (db) async { await db.execute('PRAGMA foreign_keys = ON'); },
       onCreate: (db, version) async {
         final batch = db.batch();
@@ -268,7 +277,7 @@ class LocalStore {
           method TEXT NOT NULL, reference TEXT DEFAULT '', notes TEXT DEFAULT '', created_at TEXT NOT NULL,
           FOREIGN KEY(order_id) REFERENCES service_orders(id))''');
         batch.execute('''CREATE TABLE inventory_items(
-          id INTEGER PRIMARY KEY AUTOINCREMENT, sku TEXT UNIQUE, name TEXT NOT NULL,
+          id INTEGER PRIMARY KEY AUTOINCREMENT, sku TEXT UNIQUE, barcode TEXT DEFAULT '', name TEXT NOT NULL,
           category TEXT DEFAULT 'General', stock REAL NOT NULL DEFAULT 0,
           min_stock REAL NOT NULL DEFAULT 0, cost REAL NOT NULL DEFAULT 0,
           price REAL NOT NULL DEFAULT 0, location TEXT DEFAULT '', updated_at TEXT NOT NULL,
@@ -342,6 +351,8 @@ class LocalStore {
         await _createOrderRefundTable(db);
         await _createAppNotificationsTable(db);
         await _createInventoryPriceHistoryTable(db);
+        await _createPosDraftTicketsTable(db);
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_inventory_barcode ON inventory_items(barcode)");
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -403,11 +414,43 @@ class LocalStore {
         if (oldVersion < 11) {
           await _createInventoryPriceHistoryTable(db);
         }
+        if (oldVersion < 12) {
+          await db.execute("ALTER TABLE inventory_items ADD COLUMN barcode TEXT DEFAULT ''");
+          await db.execute("CREATE INDEX IF NOT EXISTS idx_inventory_barcode ON inventory_items(barcode)");
+        }
+        if (oldVersion < 13) {
+          await _createPosDraftTicketsTable(db);
+        }
       },
     );
     _instance = LocalStore._(database);
     await _instance!._seedIfEmpty();
     return _instance!;
+  }
+
+  Future<List<Map<String, Object?>>> posDraftTickets() async {
+    requirePermission('sales.view');
+    return db.query('pos_draft_tickets', orderBy: 'updated_at DESC');
+  }
+
+  Future<Map<String, Object?>?> posDraftTicket(String id) async {
+    requirePermission('sales.view');
+    final rows = await db.query('pos_draft_tickets', where: 'id=?', whereArgs: [id], limit: 1);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<void> savePosDraftTicket(String id, String payloadJson) async {
+    requirePermission('sales.manage');
+    await db.insert('pos_draft_tickets', {
+      'id': id,
+      'payload_json': payloadJson,
+      'updated_at': _now(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deletePosDraftTicket(String id) async {
+    requirePermission('sales.manage');
+    await db.delete('pos_draft_tickets', where: 'id=?', whereArgs: [id]);
   }
 
   Future<void> close() async {
@@ -446,7 +489,7 @@ class LocalStore {
       if (check != 'ok') throw StateError('La copia no pasó la verificación de integridad de SQLite.');
       final versionRows = await verification.rawQuery('PRAGMA user_version');
       final version = (versionRows.first.values.first as num).toInt();
-      if (version < 1 || version > 11) {
+      if (version < 1 || version > 13) {
         throw StateError('La versión de la copia ($version) no es compatible con esta app.');
       }
       final requiredTables = await verification.rawQuery('''
