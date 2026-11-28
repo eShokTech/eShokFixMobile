@@ -12,7 +12,7 @@ class _AppUpdateSettingsSectionState extends State<AppUpdateSettingsSection> {
   bool _checking = false;
   bool _downloading = false;
   double _progress = 0;
-  String _message = 'Versión instalada: ' + eShokFixCurrentVersion;
+  String _message = 'Versión instalada: $eShokFixCurrentVersion';
 
   Future<void> _check() async {
     setState(() { _checking = true; _message = 'Buscando actualizaciones…'; });
@@ -21,7 +21,7 @@ class _AppUpdateSettingsSectionState extends State<AppUpdateSettingsSection> {
       if (!mounted) return;
       setState(() {
         _update = update;
-        _message = update == null ? 'Tu aplicación está actualizada.' : 'Nueva versión disponible: ' + update.version;
+        _message = update == null ? 'Tu aplicación está actualizada.' : 'Nueva versión disponible: ${update.version}';
       });
     } catch (error) {
       if (mounted) setState(() => _message = 'No se pudo comprobar: $error');
@@ -56,10 +56,10 @@ class _AppUpdateSettingsSectionState extends State<AppUpdateSettingsSection> {
   @override
   Widget build(BuildContext context) => GlassCard(
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        const Icon(Icons.system_update_alt, color: eShokPurple),
-        const SizedBox(width: 9),
-        const Expanded(child: Text('Actualizaciones de eShokFix', style: TextStyle(fontWeight: FontWeight.w800))),
+      const Row(children: [
+        Icon(Icons.system_update_alt, color: eShokPurple),
+        SizedBox(width: 9),
+        Expanded(child: Text('Actualizaciones de eShokFix', style: TextStyle(fontWeight: FontWeight.w800))),
       ]),
       const SizedBox(height: 6),
       const Text('Busca versiones nuevas y descárgalas desde la aplicación. Android confirma la actualización y conserva los datos.',
