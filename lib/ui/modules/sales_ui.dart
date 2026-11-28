@@ -279,7 +279,6 @@ class _SaleEntryDraft {
 
 class _SaleEntryDialog extends StatefulWidget {
   const _SaleEntryDialog({
-    super.key,
     required this.title,
     required this.descriptionLabel,
     required this.priceLabel,
