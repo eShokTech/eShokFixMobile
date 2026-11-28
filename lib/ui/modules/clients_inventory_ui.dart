@@ -15,7 +15,7 @@ class _ClientsPageState extends State<ClientsPage> {
   bool _can(String permission) => AuthService.can(widget.store.authenticatedUser?.role ?? '', permission);
   @override
   void dispose() { _query.dispose(); super.dispose(); }
-  Future<void> _edit([Map<String, Object?>? item]) async { final result = await showDialog<int>(context: context, builder: (_) => ClientFormDialog(store: widget.store, client: item)); if (result != null && mounted) setState(_refresh); }
+  Future<void> _edit([Map<String, Object?>? item]) async { final result = await Navigator.push<int>(context, MaterialPageRoute(builder: (_) => ClientFormDialog(store: widget.store, client: item))); if (result != null && mounted) setState(_refresh); }
   @override
   Widget build(BuildContext context) => PageFrame(child: Column(children: [
     SectionHeading('Clientes', subtitle: 'Expedientes, equipos y datos de contacto', trailing: _can('clients.manage') ? FilledButton.tonalIcon(onPressed: () => _edit(), icon: const Icon(Icons.person_add_alt_1, size: 17), label: const Text('Nuevo')) : null),
@@ -81,9 +81,53 @@ class _ClientFormDialogState extends State<ClientFormDialog> {
   @override
   void dispose() { for (final c in [_name,_phone,_wa,_email,_address,_notes]) { c.dispose(); } super.dispose(); }
   @override
-  Widget build(BuildContext context) => AlertDialog(scrollable: true, title: Text(widget.client == null ? 'Nuevo cliente' : 'Editar cliente'), content: SizedBox(width: 440, child: SingleChildScrollView(child: Form(key: _form, child: Column(mainAxisSize: MainAxisSize.min, children: [
-    _field(_name, 'Nombre completo', required: true), const SizedBox(height: 8), _field(_phone, 'Teléfono'), const SizedBox(height: 8), _field(_wa, 'WhatsApp'), const SizedBox(height: 8), _field(_email, 'Correo'), const SizedBox(height: 8), _field(_address, 'Dirección'), const SizedBox(height: 8), _field(_notes, 'Notas', lines: 2),
-  ])))), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')), FilledButton(onPressed: () async { if (!_form.currentState!.validate()) return; final id = await widget.store.saveClient(id: widget.client?['id'] as int?, name: _name.text, phone: _phone.text, whatsapp: _wa.text, email: _email.text, address: _address.text, notes: _notes.text); if (context.mounted) Navigator.pop(context, id); }, child: const Text('Guardar'))]);
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back)),
+      title: Text(widget.client == null ? 'Nuevo cliente' : 'Editar cliente'),
+    ),
+    body: Form(
+      key: _form,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _field(_name, 'Nombre completo', required: true),
+          const SizedBox(height: 12),
+          _field(_phone, 'Teléfono'),
+          const SizedBox(height: 12),
+          _field(_wa, 'WhatsApp'),
+          const SizedBox(height: 12),
+          _field(_email, 'Correo'),
+          const SizedBox(height: 12),
+          _field(_address, 'Dirección'),
+          const SizedBox(height: 12),
+          _field(_notes, 'Notas', lines: 3),
+        ],
+      ),
+    ),
+    bottomNavigationBar: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: FilledButton.icon(
+          onPressed: () async {
+            if (!_form.currentState!.validate()) return;
+            try {
+              final id = await widget.store.saveClient(
+                id: widget.client?['id'] as int?, name: _name.text,
+                phone: _phone.text, whatsapp: _wa.text, email: _email.text,
+                address: _address.text, notes: _notes.text,
+              );
+              if (context.mounted) Navigator.pop(context, id);
+            } catch (error) {
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+            }
+          },
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Guardar cliente'),
+        ),
+      ),
+    ),
+  );
 }
 
 class InventoryPage extends StatefulWidget {
