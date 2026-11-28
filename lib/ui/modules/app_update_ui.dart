@@ -67,7 +67,7 @@ class _AppUpdateSettingsSectionState extends State<AppUpdateSettingsSection> {
       if (_downloading) ...[
         const SizedBox(height: 8),
         LinearProgressIndicator(value: _progress),
-        Text((_progress * 100).toStringAsFixed(0) + '%', style: const TextStyle(fontSize: 9)),
+        Text('${(_progress * 100).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 9)),
       ],
       const SizedBox(height: 9),
       Wrap(spacing: 8, runSpacing: 8, children: [
