@@ -332,124 +332,108 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
+  void _openSection(String title, Widget child) {
+    Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _SettingsDetailPage(title: title, child: child),
+      ),
+    );
+  }
+
+  Widget _shopSettings() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    TextField(controller: shop, decoration: const InputDecoration(labelText: 'Nombre comercial')),
+    const SizedBox(height: 8),
+    TextField(controller: warranty, keyboardType: TextInputType.number,
+      decoration: const InputDecoration(labelText: 'Garantía predeterminada (días)')),
+    const SizedBox(height: 8),
+    SwitchListTile(
+      contentPadding: EdgeInsets.zero,
+      title: const Text('Aceptar dólares en caja', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+      subtitle: const Text('Activa una opción USD en el cobro del punto de venta',
+        style: TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+      value: acceptUsdCash,
+      onChanged: (value) => setState(() => acceptUsdCash = value),
+    ),
+    if (acceptUsdCash)
+      TextField(controller: usdExchangeRate,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(labelText: 'Tipo de cambio predeterminado (MXN por USD)',
+          prefixText: r'$ ', helperText: 'Pesos mexicanos que equivalen a un dólar estadounidense.')),
+    const SizedBox(height: 10),
+    FilledButton.icon(
+      onPressed: loaded ? () async {
+        final days = int.tryParse(warranty.text.trim());
+        final rateText = usdExchangeRate.text.trim().replaceAll(',', '.');
+        final rate = rateText.isEmpty ? null : double.tryParse(rateText);
+        if (shop.text.trim().isEmpty || days == null || days < 0 || days > 3650 ||
+            (rateText.isNotEmpty && (rate == null || !rate.isFinite || rate <= 0)) ||
+            (acceptUsdCash && (rate == null || !rate.isFinite || rate <= 0))) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Revisa nombre, garantía y tipo de cambio. La garantía debe ser 0 a 3650 días y el tipo de cambio mayor a cero.')));
+          return;
+        }
+        await widget.store.saveSetting('shop_name', shop.text.trim());
+        await widget.store.saveSetting('default_warranty_days', days.toString());
+        await widget.store.saveSetting('pos.accept_usd_cash', acceptUsdCash ? '1' : '0');
+        await widget.store.saveSetting('pos.usd_exchange_rate', rate?.toStringAsFixed(4) ?? '');
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Configuración guardada localmente.')));
+      } : null,
+      icon: const Icon(Icons.save_outlined), label: const Text('Guardar cambios')),
+  ]);
+
   @override
-  Widget build(BuildContext context) => PageFrame(
-    child: ListView(children: [
-      const SectionHeading('Configuración', subtitle: 'Identidad y reglas generales'),
-      const SizedBox(height: 13),
-      GlassCard(padding: EdgeInsets.zero, child: ExpansionTile(
-        leading: const Icon(Icons.storefront_outlined, color: eShokPurple),
-        title: const Text('Datos del taller', style: TextStyle(fontWeight: FontWeight.w800)),
-        children: [Padding(
-          padding: const EdgeInsets.fromLTRB(15, 0, 15, 15),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            TextField(controller: shop, decoration: const InputDecoration(labelText: 'Nombre comercial')),
-            const SizedBox(height: 8),
-            TextField(controller: warranty, keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Garantía predeterminada (días)')),
-            const SizedBox(height: 8),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Aceptar dólares en caja', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-              subtitle: const Text('Activa una opción USD en el cobro del punto de venta',
-                style: TextStyle(fontSize: 10, color: Color(0xFF81778D))),
-              value: acceptUsdCash,
-              onChanged: (value) => setState(() => acceptUsdCash = value),
-            ),
-            if (acceptUsdCash)
-              TextField(controller: usdExchangeRate,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Tipo de cambio predeterminado (MXN por USD)',
-                  prefixText: r'$ ', helperText: 'Pesos mexicanos que equivalen a un dólar estadounidense.')),
-            const SizedBox(height: 10),
-            FilledButton.icon(
-              onPressed: loaded ? () async {
-                final days = int.tryParse(warranty.text.trim());
-                final rateText = usdExchangeRate.text.trim().replaceAll(',', '.');
-                final rate = rateText.isEmpty ? null : double.tryParse(rateText);
-                if (shop.text.trim().isEmpty || days == null || days < 0 || days > 3650 ||
-                    (rateText.isNotEmpty && (rate == null || !rate.isFinite || rate <= 0)) ||
-                    (acceptUsdCash && (rate == null || !rate.isFinite || rate <= 0))) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Revisa nombre, garantía y tipo de cambio. La garantía debe ser 0 a 3650 días y el tipo de cambio mayor a cero.')));
-                  return;
-                }
-                await widget.store.saveSetting('shop_name', shop.text.trim());
-                await widget.store.saveSetting('default_warranty_days', days.toString());
-                await widget.store.saveSetting('pos.accept_usd_cash', acceptUsdCash ? '1' : '0');
-                await widget.store.saveSetting('pos.usd_exchange_rate', rate?.toStringAsFixed(4) ?? '');
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Configuración guardada localmente.')),
-                  );
-                }
-              } : null,
-              icon: const Icon(Icons.save_outlined), label: const Text('Guardar cambios')),
-          ]),
-        )],
-      )),
-      const SizedBox(height: 8),
-      GlassCard(padding: EdgeInsets.zero, child: ExpansionTile(
-        leading: const Icon(Icons.sell_outlined, color: eShokPurple),
-        title: const Text('Precios de mayoreo', style: TextStyle(fontWeight: FontWeight.w800)),
-        children: [Padding(padding: const EdgeInsets.all(8),
-          child: WholesaleDiscountSettingsSection(store: widget.store))],
-      )),
-      const SizedBox(height: 8),
-      GlassCard(padding: EdgeInsets.zero, child: ExpansionTile(
-        leading: const Icon(Icons.backup_outlined, color: eShokPurple),
-        title: const Text('Base de datos y respaldos', style: TextStyle(fontWeight: FontWeight.w800)),
-        children: [Padding(
-          padding: const EdgeInsets.fromLTRB(15, 0, 15, 15),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Exporta una copia SQLite a Archivos o restaura una copia previa.',
-              style: TextStyle(fontSize: 10, color: Color(0xFF7E7489), height: 1.4)),
-            const SizedBox(height: 9),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              FilledButton.tonalIcon(onPressed: _createBackup,
-                icon: const Icon(Icons.backup_outlined), label: const Text('Crear respaldo')),
-              OutlinedButton.icon(onPressed: _restoreBackup,
-                icon: const Icon(Icons.settings_backup_restore), label: const Text('Restaurar')),
-            ]),
-          ]),
-        )],
-      )),
-      const SizedBox(height: 8),
-      GlassCard(padding: EdgeInsets.zero, child: ExpansionTile(
-        leading: const Icon(Icons.cleaning_services_outlined, color: eShokPurple),
-        title: const Text('Datos de demostración', style: TextStyle(fontWeight: FontWeight.w800)),
-        children: [Padding(
-          padding: const EdgeInsets.fromLTRB(15, 0, 15, 15),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Retira los registros ficticios antes de operar con clientes reales.',
-              style: TextStyle(fontSize: 10, color: Color(0xFF7E7489), height: 1.4)),
-            const SizedBox(height: 9),
-            FutureBuilder<Map<String, int>>(future: _demoCounts, builder: (context, snap) {
-              if (!snap.hasData) return const LinearProgressIndicator();
-              final data = snap.data!;
-              return Text('Clientes: ${data['clients']}  ·  Órdenes: ${data['orders']}  ·  Artículos: ${data['items']}',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700));
-            }),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(onPressed: _removeDemoData,
-              icon: const Icon(Icons.cleaning_services_outlined), label: const Text('Retirar datos de demostración')),
-          ]),
-        )],
-      )),
-      const SizedBox(height: 8),
-      _settingsRow(context, Icons.people_outline, 'Usuarios y roles', 'Catálogo local de perfiles', () => widget.open('usuarios')),
-      _settingsRow(context, Icons.notifications_active_outlined, 'Eventos de WhatsApp', 'Solo recepción, listo y entrega', () => widget.open('whatsapp')),
-      _settingsRow(context, Icons.vpn_key_outlined, 'Licenciamiento', 'Conexión con servidor pendiente', () => widget.open('licencias')),
-      _settingsRow(context, Icons.policy_outlined, 'Política de comunicación', 'Reglas de mensajes automáticos', () => showDialog<void>(
-        context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Política de comunicación'),
-          content: const Text('El flujo previsto genera únicamente tres eventos automáticos: recepción del equipo, equipo listo para recoger y comprobante con garantía al registrar la entrega. Los estados internos no disparan mensajes.'),
-          actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cerrar'))],
-        ),
-      )),
-    ]),
-  );
+  Widget build(BuildContext context) => PageFrame(child: ListView(children: [
+    const SectionHeading('Configuración', subtitle: 'Identidad y reglas generales'),
+    const SizedBox(height: 13),
+    _settingsRow(context, Icons.storefront_outlined, 'Datos del taller', 'Nombre, garantía y moneda', () {
+      _openSection('Datos del taller', _shopSettings());
+    }),
+    _settingsRow(context, Icons.sell_outlined, 'Precios de mayoreo', 'Descuentos por unidad y porcentaje', () {
+      _openSection('Precios de mayoreo', WholesaleDiscountSettingsSection(store: widget.store));
+    }),
+    _settingsRow(context, Icons.backup_outlined, 'Base de datos y respaldos', 'Crear o restaurar una copia SQLite', () {
+      _openSection('Base de datos y respaldos', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Exporta una copia SQLite a Archivos o restaura una copia previa. Se recomienda respaldar antes de actualizar o limpiar datos.',
+          style: TextStyle(fontSize: 11, color: Color(0xFF7E7489), height: 1.4)),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          FilledButton.tonalIcon(onPressed: _createBackup, icon: const Icon(Icons.backup_outlined), label: const Text('Crear respaldo')),
+          OutlinedButton.icon(onPressed: _restoreBackup, icon: const Icon(Icons.settings_backup_restore), label: const Text('Restaurar')),
+        ]),
+      ]));
+    }),
+    _settingsRow(context, Icons.cleaning_services_outlined, 'Datos de demostración', 'Consultar y retirar registros ficticios', () {
+      _openSection('Datos de demostración', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Retira los registros ficticios antes de empezar a operar con clientes reales.',
+          style: TextStyle(fontSize: 11, color: Color(0xFF7E7489), height: 1.4)),
+        const SizedBox(height: 10),
+        FutureBuilder<Map<String, int>>(future: _demoCounts, builder: (context, snap) {
+          if (snap.hasError) return Text('No se pudieron consultar los datos: ${snap.error}');
+          if (!snap.hasData) return const LinearProgressIndicator();
+          final data = snap.data!;
+          return Text('Clientes: ${data['clients']}  ·  Órdenes: ${data['orders']}  ·  Artículos: ${data['items']}',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800));
+        }),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(onPressed: _removeDemoData,
+          icon: const Icon(Icons.cleaning_services_outlined), label: const Text('Retirar datos de demostración')),
+      ]));
+    }),
+    _settingsRow(context, Icons.people_outline, 'Usuarios y roles', 'Catálogo local de perfiles', () => widget.open('usuarios')),
+    _settingsRow(context, Icons.notifications_active_outlined, 'Eventos de WhatsApp', 'Solo recepción, listo y entrega', () => widget.open('whatsapp')),
+    _settingsRow(context, Icons.vpn_key_outlined, 'Licenciamiento', 'Conexión con servidor pendiente', () => widget.open('licencias')),
+    _settingsRow(context, Icons.policy_outlined, 'Política de comunicación', 'Reglas de mensajes automáticos', () => showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Política de comunicación'),
+        content: const Text('El flujo previsto genera únicamente tres eventos automáticos: recepción del equipo, equipo listo para recoger y comprobante con garantía al registrar la entrega. Los estados internos no disparan mensajes.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cerrar'))],
+      ),
+    )),
+  ]));
+
 }
 
 
@@ -674,6 +658,24 @@ class _WholesaleDiscountSettingsSectionState
           label: const Text('Nuevo precio de mayoreo'),
         ),
       ],
+    ),
+  );
+}
+
+class _SettingsDetailPage extends StatelessWidget {
+  const _SettingsDetailPage({required this.title, required this.child});
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(title)),
+    body: PageFrame(
+      child: ListView(
+        children: [
+          GlassCard(child: child),
+        ],
+      ),
     ),
   );
 }
