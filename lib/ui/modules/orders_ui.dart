@@ -18,7 +18,11 @@ class _OrdersPageState extends State<OrdersPage> {
   void dispose() { _search.dispose(); super.dispose(); }
   Future<void> _newOrder() async {
     final created = await showDialog<bool>(context: context, builder: (_) => NewOrderDialog(store: widget.store));
-    if (created == true && mounted) setState(_refresh);
+    if (created == true && mounted) {
+      final freshOrders = await widget.store.orders(query: _search.text, status: _status);
+      if (!mounted) return;
+      setState(() => _future = Future.value(freshOrders));
+    }
   }
   @override
   Widget build(BuildContext context) => PageFrame(child: Column(children: [
@@ -36,7 +40,16 @@ class _OrdersPageState extends State<OrdersPage> {
       if (rows.isEmpty) return const EmptyState(title: 'No hay expedientes', message: 'Prueba otra búsqueda o registra una nueva orden.');
       return RefreshIndicator(onRefresh: () async => setState(_refresh), child: ListView.builder(physics: const AlwaysScrollableScrollPhysics(), itemCount: rows.length, itemBuilder: (_, i) {
         final row = rows[i];
-        return OrderListTile(order: row, onTap: () async { await Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailPage(store: widget.store, orderId: row['id'] as int))); if (mounted) setState(_refresh); });
+        return OrderListTile(order: row, onTap: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => OrderDetailPage(store: widget.store, orderId: row['id'] as int)),
+          );
+          if (!mounted) return;
+          final freshOrders = await widget.store.orders(query: _search.text, status: _status);
+          if (!mounted) return;
+          setState(() => _future = Future.value(freshOrders));
+        });
       }));
     })),
   ]));
