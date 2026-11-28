@@ -519,7 +519,7 @@ class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver
     final selectedIndex = payload['selected_line_index'];
     setState(() {
       _ticketId = id;
-      _ticketTitle = _str(payload['title'], 'Ticket ' + (_draftTickets.length + 1).toString());
+      _ticketTitle = _str(payload['title'], 'Ticket ${_draftTickets.length + 1}');
       _cart..clear()..addAll(restored);
       _clientId = client is num ? client.toInt() : null;
       _discount.text = _str(payload['discount'], '0');
@@ -537,7 +537,7 @@ class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver
   Future<void> _createDraftTicket() async {
     await _flushDraftSave();
     final id = DateTime.now().microsecondsSinceEpoch.toString();
-    final title = 'Ticket ' + (_draftTickets.length + 1).toString();
+    final title = 'Ticket ${_draftTickets.length + 1}';
     final payload = jsonEncode({
       'title': title,
       'client_id': null,
