@@ -110,15 +110,19 @@ class _LoginPageState extends State<LoginPage> {
       final enrolled = await _biometric.getAvailableBiometrics();
       final savedUser = await _secure.read(key: 'eshokfix.biometric.username');
       final savedPin = await _secure.read(key: 'eshokfix.biometric.pin');
-      if (mounted) setState(() {
-        _biometricAvailable = supported && enrolled.isNotEmpty;
-        _biometricReady = _biometricAvailable && savedUser != null && savedPin != null;
-      });
+      if (mounted) {
+        setState(() {
+          _biometricAvailable = supported && enrolled.isNotEmpty;
+          _biometricReady = _biometricAvailable && savedUser != null && savedPin != null;
+        });
+      }
     } catch (_) {
-      if (mounted) setState(() {
-        _biometricAvailable = false;
-        _biometricReady = false;
-      });
+      if (mounted) {
+        setState(() {
+          _biometricAvailable = false;
+          _biometricReady = false;
+        });
+      }
     }
   }
 
