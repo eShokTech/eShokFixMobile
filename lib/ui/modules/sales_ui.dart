@@ -228,6 +228,19 @@ class _SaleCartLine {
     this.itemId,
   });
 
+  factory _SaleCartLine.fromDraftMap(Map<String, Object?> map) {
+    final line = _SaleCartLine(
+      itemId: map['item_id'] is num ? (map['item_id'] as num).toInt() : null,
+      description: _str(map['description']),
+      quantity: _num(map['quantity']),
+      unitPrice: _num(map['unit_price']),
+    );
+    line.wholesaleName = map['wholesale_name'] as String?;
+    line.wholesaleType = map['wholesale_type'] as String?;
+    line.wholesaleValue = map['wholesale_value'] is num ? _num(map['wholesale_value']) : null;
+    return line;
+  }
+
   final int? itemId;
   final String description;
   double quantity;
@@ -255,6 +268,16 @@ class _SaleCartLine {
     wholesaleType = _str(rule['type']);
     wholesaleValue = _num(rule['value']);
   }
+
+  Map<String, Object?> toDraftMap() => {
+    'item_id': itemId,
+    'description': description,
+    'quantity': quantity,
+    'unit_price': unitPrice,
+    'wholesale_name': wholesaleName,
+    'wholesale_type': wholesaleType,
+    'wholesale_value': wholesaleValue,
+  };
 
   Map<String, Object?> toMap() => {
     'item_id': itemId,
@@ -409,7 +432,7 @@ class SaleCartPage extends StatefulWidget {
   State<SaleCartPage> createState() => _SaleCartPageState();
 }
 
-class _SaleCartPageState extends State<SaleCartPage> {
+class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver {
   final TextEditingController _search = TextEditingController();
   final TextEditingController _discount = TextEditingController(text: '0');
   List<Map<String, Object?>> _products = [];
@@ -420,11 +443,126 @@ class _SaleCartPageState extends State<SaleCartPage> {
   _SaleCartLine? _selectedLine;
   int? _clientId;
   bool _loading = true;
+  String? _ticketId;
+  String _ticketTitle = 'Ticket 1';
+  List<Map<String, Object?>> _draftTickets = [];
+  Future<void> _draftWriteQueue = Future<void>.value();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _scheduleDraftSave();
+    }
+  }
+
+  Map<String, Object?> _draftPayload() => {
+    'title': _ticketTitle,
+    'client_id': _clientId,
+    'discount': _discount.text,
+    'sale_wide_rule': _saleWideWholesaleRule,
+    'items': _cart.map((line) => line.toDraftMap()).toList(),
+    'selected_line_index': _selectedLine == null ? null : _cart.indexOf(_selectedLine!),
+  };
+
+  void _scheduleDraftSave() {
+    final id = _ticketId;
+    if (id == null || _loading) return;
+    final payload = jsonEncode(_draftPayload());
+    _draftWriteQueue = _draftWriteQueue
+        .catchError((_) {})
+        .then((_) => widget.store.savePosDraftTicket(id, payload))
+        .then((_) {
+          final index = _draftTickets.indexWhere((ticket) => _str(ticket['id']) == id);
+          if (index >= 0) {
+            _draftTickets[index] = {
+              'id': id,
+              'payload_json': payload,
+              'updated_at': DateTime.now().toIso8601String(),
+            };
+          }
+        });
+  }
+
+  Future<void> _flushDraftSave() async {
+    _scheduleDraftSave();
+    await _draftWriteQueue;
+  }
+
+  void _restoreDraftRow(Map<String, Object?> row) {
+    final id = _str(row['id']);
+    Map<String, Object?> payload = {};
+    try {
+      final decoded = jsonDecode(_str(row['payload_json'], '{}'));
+      if (decoded is Map) payload = Map<String, Object?>.from(decoded);
+    } catch (_) {}
+    final rawItems = payload['items'];
+    final restored = <_SaleCartLine>[];
+    if (rawItems is List) {
+      for (final item in rawItems) {
+        if (item is Map) {
+          try {
+            restored.add(_SaleCartLine.fromDraftMap(Map<String, Object?>.from(item)));
+          } catch (_) {}
+        }
+      }
+    }
+    final client = payload['client_id'];
+    final selectedIndex = payload['selected_line_index'];
+    setState(() {
+      _ticketId = id;
+      _ticketTitle = _str(payload['title'], 'Ticket ' + (_draftTickets.length + 1).toString());
+      _cart..clear()..addAll(restored);
+      _clientId = client is num ? client.toInt() : null;
+      _discount.text = _str(payload['discount'], '0');
+      final rule = payload['sale_wide_rule'];
+      _saleWideWholesaleRule = rule is Map ? Map<String, Object?>.from(rule) : null;
+      _selectedLine = selectedIndex is num &&
+              selectedIndex.toInt() >= 0 &&
+              selectedIndex.toInt() < _cart.length
+          ? _cart[selectedIndex.toInt()]
+          : null;
+      _search.clear();
+    });
+  }
+
+  Future<void> _createDraftTicket() async {
+    await _flushDraftSave();
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final title = 'Ticket ' + (_draftTickets.length + 1).toString();
+    final payload = jsonEncode({
+      'title': title,
+      'client_id': null,
+      'discount': '0',
+      'sale_wide_rule': null,
+      'items': <Object?>[],
+      'selected_line_index': null,
+    });
+    await widget.store.savePosDraftTicket(id, payload);
+    final row = {
+      'id': id,
+      'payload_json': payload,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    if (!mounted) return;
+    setState(() => _draftTickets.add(row));
+    _restoreDraftRow(row);
+  }
+
+  Future<void> _switchDraftTicket(String id) async {
+    if (id == _ticketId) return;
+    await _flushDraftSave();
+    final row = await widget.store.posDraftTicket(id);
+    if (!mounted || row == null) return;
+    _restoreDraftRow(row);
   }
 
   Future<void> _load() async {
@@ -433,6 +571,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
         widget.store.inventory(),
         widget.store.clients(),
       ]);
+      final draftRows = await widget.store.posDraftTickets();
       final rawRules = await widget.store.setting('pos.wholesale_rules', fallback: '[]');
       final rules = <Map<String, Object?>>[];
       try {
@@ -465,8 +604,14 @@ class _SaleCartPageState extends State<SaleCartPage> {
             .where((client) => (client['is_demo'] as num?)?.toInt() != 1)
             .toList();
         _wholesaleRules = rules;
+        _draftTickets = draftRows;
         _loading = false;
       });
+      if (draftRows.isEmpty) {
+        await _createDraftTicket();
+      } else {
+        _restoreDraftRow(draftRows.first);
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -478,6 +623,8 @@ class _SaleCartPageState extends State<SaleCartPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _scheduleDraftSave();
     _search.dispose();
     _discount.dispose();
     super.dispose();
@@ -540,6 +687,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
         nextQuantity = 1;
       }
     });
+    _scheduleDraftSave();
     if (!fromScanner) {
       _search.clear();
       FocusScope.of(context).unfocus();
@@ -596,6 +744,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
       }
       _cart.add(line);
     });
+    _scheduleDraftSave();
   }
 
   Future<void> _showWholesaleMenu() async {
@@ -699,6 +848,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
         _selectedLine!.applyWholesaleRule(rule);
       }
     });
+    _scheduleDraftSave();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(applyAll
@@ -730,6 +880,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
       }
       _cart.add(line);
     });
+    _scheduleDraftSave();
   }
 
   Future<void> _continueToPayment() async {
@@ -753,6 +904,12 @@ class _SaleCartPageState extends State<SaleCartPage> {
       ),
     );
     if (receipt == null || !mounted) return;
+    await _draftWriteQueue;
+    final completedTicketId = _ticketId;
+    if (completedTicketId != null) {
+      await widget.store.deletePosDraftTicket(completedTicketId);
+      _draftTickets.removeWhere((ticket) => _str(ticket['id']) == completedTicketId);
+    }
     setState(() {
       _cart.clear();
       _clientId = null;
@@ -786,6 +943,41 @@ class _SaleCartPageState extends State<SaleCartPage> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Column(
                 children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 38,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: _draftTickets.map((ticket) {
+                              final id = _str(ticket['id']);
+                              String label = 'Ticket';
+                              try {
+                                final data = jsonDecode(_str(ticket['payload_json'], '{}'));
+                                if (data is Map) label = _str(data['title'], label);
+                              } catch (_) {}
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 6),
+                                child: ChoiceChip(
+                                  label: Text(label, style: const TextStyle(fontSize: 10)),
+                                  selected: id == _ticketId,
+                                  onSelected: (_) => _switchDraftTicket(id),
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Crear otro ticket',
+                        onPressed: _createDraftTicket,
+                        icon: const Icon(Icons.add_circle, color: eShokPurple),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 7),
                   DropdownButtonFormField<int?>(
                     initialValue: _clientId,
                     isExpanded: true,
@@ -800,7 +992,10 @@ class _SaleCartPageState extends State<SaleCartPage> {
                         child: Text(_str(client['name']), overflow: TextOverflow.ellipsis),
                       )),
                     ],
-                    onChanged: (value) => setState(() => _clientId = value),
+                    onChanged: (value) {
+                      setState(() => _clientId = value);
+                      _scheduleDraftSave();
+                    },
                   ),
                   const SizedBox(height: 9),
                   TextField(
@@ -943,7 +1138,10 @@ class _SaleCartPageState extends State<SaleCartPage> {
                               padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
                               child: InkWell(
                                 borderRadius: BorderRadius.circular(12),
-                                onTap: () => setState(() => _selectedLine = line),
+                                onTap: () {
+                                  setState(() => _selectedLine = line);
+                                  _scheduleDraftSave();
+                                },
                                 child: Row(
                                   children: [
                                     Expanded(
@@ -970,14 +1168,17 @@ class _SaleCartPageState extends State<SaleCartPage> {
                                     IconButton(
                                       tooltip: 'Disminuir cantidad',
                                       visualDensity: VisualDensity.compact,
-                                      onPressed: () => setState(() {
-                                        if (line.quantity > 1) {
-                                          line.quantity -= 1;
-                                        } else {
-                                          _cart.removeAt(index);
-                                          if (identical(_selectedLine, line)) _selectedLine = null;
-                                        }
-                                      }),
+                                      onPressed: () {
+                                        setState(() {
+                                          if (line.quantity > 1) {
+                                            line.quantity -= 1;
+                                          } else {
+                                            _cart.removeAt(index);
+                                            if (identical(_selectedLine, line)) _selectedLine = null;
+                                          }
+                                        });
+                                        _scheduleDraftSave();
+                                      },
                                       icon: const Icon(Icons.remove_circle_outline),
                                     ),
                                     Text(line.quantity.toStringAsFixed(0),
@@ -985,7 +1186,10 @@ class _SaleCartPageState extends State<SaleCartPage> {
                                     IconButton(
                                       tooltip: 'Aumentar cantidad',
                                       visualDensity: VisualDensity.compact,
-                                      onPressed: () => setState(() => line.quantity += 1),
+                                      onPressed: () {
+                                        setState(() => line.quantity += 1);
+                                        _scheduleDraftSave();
+                                      },
                                       icon: const Icon(Icons.add_circle_outline, color: eShokPurple),
                                     ),
                                   ],
@@ -998,7 +1202,10 @@ class _SaleCartPageState extends State<SaleCartPage> {
                         TextField(
                           controller: _discount,
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          onChanged: (_) => setState(() {}),
+                          onChanged: (_) {
+                            setState(() {});
+                            _scheduleDraftSave();
+                          },
                           decoration: const InputDecoration(
                             labelText: 'Descuento global',
                             prefixText: r'$ ',
