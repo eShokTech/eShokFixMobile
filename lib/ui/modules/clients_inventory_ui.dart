@@ -102,7 +102,7 @@ class _InventoryPageState extends State<InventoryPage> {
   bool _canViewCost() => AuthService.can(widget.store.authenticatedUser?.role ?? '', 'inventory.cost.view');
   @override
   void dispose() { _query.dispose(); super.dispose(); }
-  Future<void> _edit([Map<String, Object?>? item]) async { final r = await showDialog<bool>(context: context, builder: (_) => InventoryFormDialog(store: widget.store, item: item)); if (r == true && mounted) setState(_refresh); }
+  Future<void> _edit([Map<String, Object?>? item]) async { final r = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => InventoryFormDialog(store: widget.store, item: item))); if (r == true && mounted) setState(_refresh); }
   Future<void> _adjust(Map<String, Object?> item) async { final r = await showDialog<bool>(context: context, builder: (_) => StockDialog(store: widget.store, item: item)); if (r == true && mounted) setState(_refresh); }
   Future<void> _history(Map<String, Object?> item) async {
     await showDialog<void>(context: context, builder: (_) => InventoryPriceHistoryDialog(
@@ -189,61 +189,139 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
     ProductPricingRules.percentageSale => 'Calcula el precio para obtener ese margen sobre el precio final.',
     _ => '',
   };
+  Future<void> _scanBarcode() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(builder: (_) => const BarcodeScannerPage()),
+    );
+    if (code != null && mounted) setState(() => barcode.text = code);
+  }
+
   @override
-  Widget build(BuildContext context) => AlertDialog(scrollable: true, title: Text(widget.item == null ? 'Nuevo artículo' : 'Editar artículo'), content: SizedBox(width: 420, child: SingleChildScrollView(child: Form(key: form, child: Column(mainAxisSize: MainAxisSize.min, children: [
-    _field(name, 'Nombre', required: true), const SizedBox(height: 8), Row(children: [Expanded(child: _field(sku, 'SKU / código')), const SizedBox(width: 8), Expanded(child: _field(barcode, 'Código de barras'))]), const SizedBox(height: 8), _field(category, 'Categoría'), const SizedBox(height: 8), Row(children: [Expanded(child: widget.item == null ? _field(stock, 'Existencia inicial', number: true) : InputDecorator(decoration: const InputDecoration(labelText: 'Existencia actual'), child: Text(_str(widget.item?['stock'], '0')))), const SizedBox(width: 8), Expanded(child: _field(minStock, 'Mínimo', number: true))]),
-    if (widget.item != null) const Align(alignment: Alignment.centerLeft, child: Padding(padding: EdgeInsets.only(top: 4), child: Text('Para modificar existencias, registra un movimiento de inventario. Así se conserva el historial.', style: TextStyle(fontSize: 10, color: Color(0xFF81778D))))),
-    const SizedBox(height: 8),
-    Row(children: [Expanded(child: _field(cost, 'Costo', number: true, onChanged: (_) => setState(() {}))), const SizedBox(width: 8), Expanded(child: _field(price, 'Precio', number: true, onChanged: (_) => setState(() {})))]),
-    if (priceChanged) ...[
-      const SizedBox(height: 8),
-      _field(priceReason, 'Motivo del cambio de precio', required: true, lines: 2),
-      const SizedBox(height: 4),
-      const Align(alignment: Alignment.centerLeft, child: Text('El cambio quedará registrado con el usuario, precio anterior y nuevo precio.', style: TextStyle(fontSize: 9, color: Color(0xFF81778D)))),
-    ],
-    const SizedBox(height: 9),
-    DropdownButtonFormField<String>(
-      initialValue: pricingMethod,
-      decoration: const InputDecoration(labelText: 'Regla para sugerir precio'),
-      items: const [
-        DropdownMenuItem(value: ProductPricingRules.directCost, child: Text('Costo directo')),
-        DropdownMenuItem(value: ProductPricingRules.fixedProfit, child: Text('Ganancia fija')),
-        DropdownMenuItem(value: ProductPricingRules.percentageProfit, child: Text('% sobre costo')),
-        DropdownMenuItem(value: ProductPricingRules.percentageSale, child: Text('% de margen sobre venta')),
-      ],
-      onChanged: (value) => setState(() { pricingMethod = value ?? ProductPricingRules.percentageProfit; }),
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      leading: IconButton(
+        tooltip: 'Regresar',
+        onPressed: () => Navigator.pop(context, false),
+        icon: const Icon(Icons.arrow_back),
+      ),
+      title: Text(widget.item == null ? 'Nuevo artículo' : 'Editar artículo'),
     ),
-    if (pricingMethod != ProductPricingRules.directCost) ...[
-      const SizedBox(height: 8),
-      _field(pricingValue, pricingMethod == ProductPricingRules.fixedProfit ? 'Ganancia fija (\$)' : 'Porcentaje (%)', number: true, onChanged: (_) => setState(() {})),
-    ],
-    const SizedBox(height: 7),
-    Text(pricingHelp, style: const TextStyle(fontSize: 10, color: Color(0xFF81778D))),
-    const SizedBox(height: 5),
-    Row(children: [
-      Expanded(child: Text(suggestedPrice == null ? 'Revisa costo y porcentaje para calcular.' : 'Precio sugerido: ${_money(suggestedPrice)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: eShokPurple))),
-      TextButton.icon(onPressed: suggestedPrice == null ? null : () => setState(() { price.text = suggestedPrice!.toStringAsFixed(2); }), icon: const Icon(Icons.calculate_outlined, size: 16), label: const Text('Aplicar')),
-    ]),
-    const SizedBox(height: 8), _field(location, 'Ubicación'),
-  ])))), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')), FilledButton(onPressed: () async {
-    if (!form.currentState!.validate()) return;
-    try {
-      await widget.store.saveInventoryItem(
-        id: widget.item?['id'] as int?, sku: sku.text, barcode: barcode.text, name: name.text,
-        category: category.text,
-        stock: widget.item == null ? val(stock) : _num(widget.item?['stock']),
-        minStock: val(minStock), cost: val(cost), price: val(price),
-        location: location.text, priceChangeReason: priceReason.text,
-      );
-      if (context.mounted) Navigator.pop(context, true);
-    } catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$error')),
-      );
-      }
-    }
-  }, child: const Text('Guardar'))]);
+    body: SafeArea(
+      child: Form(
+        key: form,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            _field(name, 'Nombre', required: true),
+            const SizedBox(height: 12),
+            _field(sku, 'SKU / código'),
+            const SizedBox(height: 12),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: _field(barcode, 'Código QR / barras')),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: IconButton.filledTonal(
+                  tooltip: 'Escanear con cámara',
+                  onPressed: _scanBarcode,
+                  icon: const Icon(Icons.qr_code_scanner),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            _field(category, 'Categoría'),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: widget.item == null
+                ? _field(stock, 'Existencia inicial', number: true)
+                : InputDecorator(
+                    decoration: const InputDecoration(labelText: 'Existencia actual'),
+                    child: Text(_str(widget.item?['stock'], '0')),
+                  )),
+              const SizedBox(width: 8),
+              Expanded(child: _field(minStock, 'Mínimo', number: true)),
+            ]),
+            if (widget.item != null) ...[
+              const SizedBox(height: 8),
+              const Text('Para modificar existencias, registra un movimiento de inventario. Así se conserva el historial.',
+                style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+            ],
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: _field(cost, 'Costo', number: true, onChanged: (_) => setState(() {}))),
+              const SizedBox(width: 8),
+              Expanded(child: _field(price, 'Precio', number: true, onChanged: (_) => setState(() {}))),
+            ]),
+            if (priceChanged) ...[
+              const SizedBox(height: 12),
+              _field(priceReason, 'Motivo del cambio de precio', required: true, lines: 2),
+              const SizedBox(height: 4),
+              const Text('El cambio quedará registrado con el usuario, precio anterior y nuevo precio.',
+                style: TextStyle(fontSize: 10, color: Color(0xFF81778D))),
+            ],
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: pricingMethod,
+              decoration: const InputDecoration(labelText: 'Regla para sugerir precio'),
+              items: const [
+                DropdownMenuItem(value: ProductPricingRules.directCost, child: Text('Costo directo')),
+                DropdownMenuItem(value: ProductPricingRules.fixedProfit, child: Text('Ganancia fija')),
+                DropdownMenuItem(value: ProductPricingRules.percentageProfit, child: Text('% sobre costo')),
+                DropdownMenuItem(value: ProductPricingRules.percentageSale, child: Text('% de margen sobre venta')),
+              ],
+              onChanged: (value) => setState(() { pricingMethod = value ?? ProductPricingRules.percentageProfit; }),
+            ),
+            if (pricingMethod != ProductPricingRules.directCost) ...[
+              const SizedBox(height: 12),
+              _field(pricingValue, pricingMethod == ProductPricingRules.fixedProfit ? 'Ganancia fija ($)' : 'Porcentaje (%)',
+                number: true, onChanged: (_) => setState(() {})),
+            ],
+            const SizedBox(height: 8),
+            Text(pricingHelp, style: const TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+            const SizedBox(height: 5),
+            Row(children: [
+              Expanded(child: Text(suggestedPrice == null
+                ? 'Revisa costo y porcentaje para calcular.'
+                : 'Precio sugerido: ${_money(suggestedPrice)}',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: eShokPurple))),
+              TextButton.icon(
+                onPressed: suggestedPrice == null ? null : () => setState(() { price.text = suggestedPrice!.toStringAsFixed(2); }),
+                icon: const Icon(Icons.calculate_outlined, size: 16),
+                label: const Text('Aplicar'),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            _field(location, 'Ubicación'),
+          ],
+        ),
+      ),
+    ),
+    bottomNavigationBar: SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: FilledButton.icon(
+          onPressed: () async {
+            if (!form.currentState!.validate()) return;
+            try {
+              await widget.store.saveInventoryItem(
+                id: widget.item?['id'] as int?, sku: sku.text, barcode: barcode.text,
+                name: name.text, category: category.text,
+                stock: widget.item == null ? val(stock) : _num(widget.item?['stock']),
+                minStock: val(minStock), cost: val(cost), price: val(price),
+                location: location.text, priceChangeReason: priceReason.text,
+              );
+              if (context.mounted) Navigator.pop(context, true);
+            } catch (error) {
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+            }
+          },
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Guardar artículo'),
+        ),
+      ),
+    ),
+  );
 }
 
 class StockDialog extends StatefulWidget {
