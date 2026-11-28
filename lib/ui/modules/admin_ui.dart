@@ -515,7 +515,7 @@ class _WholesaleDiscountSettingsSectionState
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudieron guardar los precios de mayoreo: ' + error.toString())),
+          SnackBar(content: Text('No se pudieron guardar los precios de mayoreo: $error')),
         );
       }
     } finally {
@@ -621,9 +621,9 @@ class _WholesaleDiscountSettingsSectionState
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        const Row(
           children: [
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -636,7 +636,7 @@ class _WholesaleDiscountSettingsSectionState
                 ],
               ),
             ),
-            const Icon(Icons.sell_outlined, color: eShokPurple),
+            Icon(Icons.sell_outlined, color: eShokPurple),
           ],
         ),
         const SizedBox(height: 8),
@@ -659,7 +659,7 @@ class _WholesaleDiscountSettingsSectionState
               title: Text(_str(rule['name']),
                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
               subtitle: Text(
-                fixed ? 'Restar ' + _money(value) + ' por unidad' : 'Restar ' + value.toStringAsFixed(2) + '%',
+                fixed ? 'Restar ${_money(value)} por unidad' : 'Restar ${value.toStringAsFixed(2)}%',
                 style: const TextStyle(fontSize: 10, color: Color(0xFF81778D)),
               ),
               trailing: IconButton(

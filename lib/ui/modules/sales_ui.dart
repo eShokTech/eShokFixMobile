@@ -414,7 +414,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
   Future<_ScanItemFeedback> _addScannedProduct(String code) async {
     final product = await widget.store.inventoryItemByCode(code);
     if (product == null || (product['is_demo'] as num?)?.toInt() == 1) {
-      throw StateError('No se encontró un producto real con el código ' + code + '.');
+      throw StateError('No se encontró un producto real con el código $code.');
     }
     final itemId = product['id'] as int;
     final isNew = !_cart.any((line) => line.itemId == itemId);
@@ -545,8 +545,8 @@ class _SaleCartPageState extends State<SaleCartPage> {
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
                     subtitle: Text(
                       fixed
-                          ? 'Restar ' + _money(value) + ' por unidad'
-                          : 'Restar ' + value.toStringAsFixed(2) + '% del precio',
+                          ? 'Restar ${_money(value)} por unidad'
+                          : 'Restar ${value.toStringAsFixed(2)}% del precio',
                       style: const TextStyle(fontSize: 10, color: Color(0xFF81778D)),
                     ),
                     activeColor: eShokPurple,
@@ -614,7 +614,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
       SnackBar(
         content: Text(applyAll
             ? 'Mayoreo aplicado a toda la venta y a los artículos nuevos.'
-            : 'Mayoreo aplicado a ' + _selectedLine!.description + '.'),
+            : 'Mayoreo aplicado a ${_selectedLine!.description}.'),
       ),
     );
   }
@@ -866,9 +866,8 @@ class _SaleCartPageState extends State<SaleCartPage> {
                           final line = entry.value;
                           final selected = identical(_selectedLine, line);
                           final priceSummary = line.hasWholesale
-                              ? _money(line.unitPrice) + ' base · Mayoreo aplicado · ' +
-                                  _money(line.effectiveUnitPrice) + ' c/u · ' + _money(line.total)
-                              : _money(line.unitPrice) + ' c/u · ' + _money(line.total);
+                              ? '${_money(line.unitPrice)} base · Mayoreo aplicado · ${_money(line.effectiveUnitPrice)} c/u · ${_money(line.total)}'
+                              : '${_money(line.unitPrice)} c/u · ${_money(line.total)}';
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: GlassCard(
@@ -1595,9 +1594,8 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
             ? 'Producto agregado correctamente'
             : 'Cantidad actualizada';
         _feedbackDetail = result.addedNew
-            ? result.name + ' · ' + _money(result.unitPrice) + '. Se agregó al carrito.'
-            : 'Se sumó otra unidad de ' + result.name +
-                '. Cantidad en el carrito: ' + result.cartQuantity.toString() + '.';
+            ? '${result.name} · ${_money(result.unitPrice)}. Se agregó al carrito.'
+            : 'Se sumó otra unidad de ${result.name}. Cantidad en el carrito: ${result.cartQuantity}.';
         _feedbackIsError = false;
       });
     } catch (error) {
@@ -1669,8 +1667,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
                         child: Text('Productos escaneados',
                           style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
                       ),
-                      Text(_scannedProducts.length.toString() + ' diferentes · ' +
-                          _totalUnits.toString() + ' unidades',
+                      Text('${_scannedProducts.length} diferentes · $_totalUnits unidades',
                         style: const TextStyle(color: Colors.white70, fontSize: 9)),
                     ],
                   ),
@@ -1752,7 +1749,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
                 icon: const Icon(Icons.check),
                 label: Text(_totalUnits == 0
                     ? 'Terminar escaneo'
-                    : 'Terminar escaneo · ' + _totalUnits.toString() + ' unidades'),
+                    : 'Terminar escaneo · $_totalUnits unidades'),
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
