@@ -306,7 +306,7 @@ class _LoginPageState extends State<LoginPage> {
         ),
       ],
       if (_biometricAvailable &&
-          (snapshotPrimaryAdminPlaceholder) &&
+          _selectedIsPrimaryAdmin &&
           _biometricUsername != _selectedUsername) ...[
         const SizedBox(height: 8),
         const Text('Solo el administrador principal puede vincular y usar la huella. Las demás cuentas entran con su PIN.', textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Color(0xFF81778D))),
