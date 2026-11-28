@@ -55,6 +55,10 @@ kotlin {
     }
 }
 
+dependencies {
+    implementation("androidx.core:core:1.15.0")
+}
+
 flutter {
     source = "../.."
 }

@@ -908,8 +908,10 @@ class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver
     final completedTicketId = _ticketId;
     if (completedTicketId != null) {
       await widget.store.deletePosDraftTicket(completedTicketId);
+      if (!mounted) return;
       _draftTickets.removeWhere((ticket) => _str(ticket['id']) == completedTicketId);
     }
+    if (!mounted) return;
     setState(() {
       _cart.clear();
       _clientId = null;
