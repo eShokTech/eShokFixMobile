@@ -2117,20 +2117,6 @@ class _ScanProductBubble extends StatelessWidget {
                     quantity.toString(),
                     style: const TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900),
                   ),
-                  Positioned(
-                    right: 2,
-                    bottom: 2,
-                    child: Container(
-                      width: 21,
-                      height: 21,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: eShokPurple, width: 1.5),
-                      ),
-                      child: const Icon(Icons.add, color: eShokPurple, size: 15),
-                    ),
-                  ),
                 ],
               ),
             ),
