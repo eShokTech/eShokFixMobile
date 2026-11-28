@@ -117,7 +117,6 @@ class _LoginPageState extends State<LoginPage> {
       final supported = await _biometric.isDeviceSupported();
       final enrolled = await _biometric.getAvailableBiometrics();
       final savedUser = await _secure.read(key: 'eshokfix.biometric.username');
-      final savedPin = await _secure.read(key: 'eshokfix.biometric.pin');
       if (mounted) {
         setState(() {
           _biometricAvailable = supported && enrolled.isNotEmpty;
