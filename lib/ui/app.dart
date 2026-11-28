@@ -13,6 +13,7 @@ import 'package:printing/printing.dart';
 import '../data/local_store.dart';
 import '../data/auth_service.dart';
 import '../data/database_backup_service.dart';
+import '../data/app_update_service.dart';
 import 'package:flutter/services.dart';
 import '../domain/workflow.dart';
 import '../domain/financial_rules.dart';
