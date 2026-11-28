@@ -20,7 +20,7 @@ class _SalesPageState extends State<SalesPage> {
   void _refresh() => _sales = widget.store.sales();
 
   Future<void> _newSale() async {
-    final completed = await Navigator.push<bool>(
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => SaleCartPage(store: widget.store)),
     );
