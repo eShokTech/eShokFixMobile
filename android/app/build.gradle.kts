@@ -40,6 +40,13 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            // Use the same persistent certificate as release so updates can be
+            // installed over the previous debug build without uninstalling.
+            if (signingPropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         getByName("release") {
             if (signingPropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
