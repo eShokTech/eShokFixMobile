@@ -565,6 +565,50 @@ class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver
     }
   }
 
+  Future<void> _closeDraftTicket(String id) async {
+    if (_draftTickets.isEmpty || id == _str(_draftTickets.first['id'])) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('El ticket principal no se puede eliminar.')),
+        );
+      }
+      return;
+    }
+    final row = _draftTickets.firstWhere((ticket) => _str(ticket['id']) == id);
+    Map<String, Object?> payload = {};
+    try {
+      final decoded = jsonDecode(_str(row['payload_json'], '{}'));
+      if (decoded is Map) payload = Map<String, Object?>.from(decoded);
+    } catch (_) {}
+    final items = payload['items'] is List ? (payload['items'] as List) : const [];
+    if (items.isNotEmpty) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('¿Cerrar ticket con artículos?'),
+          content: Text('Este ticket tiene ${items.length} partida(s) cargada(s). Si lo cierras, se eliminará el borrador y sus artículos. ¿Deseas continuar?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Seguir usando')),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB65E69)),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Cerrar y eliminar'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    await _flushDraftSave();
+    await widget.store.deletePosDraftTicket(id);
+    if (!mounted) return;
+    final remaining = _draftTickets.where((ticket) => _str(ticket['id']) != id).toList(growable: true);
+    setState(() => _draftTickets = remaining);
+    if (_ticketId == id && remaining.isNotEmpty) {
+      _restoreDraftRow(remaining.first);
+    }
+  }
+
   Future<void> _switchDraftTicket(String id) async {
     if (id == _ticketId) return;
     await _flushDraftSave();
@@ -967,12 +1011,16 @@ class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver
                                 final data = jsonDecode(_str(ticket['payload_json'], '{}'));
                                 if (data is Map) label = _str(data['title'], label);
                               } catch (_) {}
+                              final isPrimary = _draftTickets.isNotEmpty &&
+                                  id == _str(_draftTickets.first['id']);
                               return Padding(
                                 padding: const EdgeInsets.only(right: 6),
-                                child: ChoiceChip(
+                                child: InputChip(
                                   label: Text(label, style: const TextStyle(fontSize: 10)),
                                   selected: id == _ticketId,
-                                  onSelected: (_) => _switchDraftTicket(id),
+                                  onPressed: () => _switchDraftTicket(id),
+                                  onDeleted: isPrimary ? null : () => _closeDraftTicket(id),
+                                  deleteIcon: const Icon(Icons.close, size: 15),
                                   visualDensity: VisualDensity.compact,
                                 ),
                               );
