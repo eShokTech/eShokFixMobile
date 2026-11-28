@@ -119,6 +119,8 @@ jobs:
       - name: Validate signed update APK without hosted emulator
         if: steps.signing.outputs.ready == 'true'
         shell: bash
+        env:
+          EXPECTED_VERSION_CODE: ${{ github.run_number }}
         run: |
           set -euo pipefail
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"
@@ -127,7 +129,7 @@ jobs:
           "$BUILD_TOOLS/apksigner" verify "$APK"
           PACKAGE_INFO="$("$BUILD_TOOLS/aapt" dump badging "$APK")"
           printf '%s\\n' "$PACKAGE_INFO" | grep -F "package: name='com.eshokfix.mobile'"
-          printf '%s\\n' "$PACKAGE_INFO" | grep -F "versionCode='\${GITHUB_RUN_NUMBER}'"
+          printf '%s\\n' "$PACKAGE_INFO" | grep -F "versionCode='$EXPECTED_VERSION_CODE'"
           echo "Signed update APK validated. Hosted runner has no KVM, so emulator installation is not available here."
 
       - name: Upload stable signed APK
