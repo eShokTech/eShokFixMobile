@@ -95,6 +95,7 @@ class _LoginPageState extends State<LoginPage> {
   String? _error;
   final _biometric = LocalAuthentication();
   final _secure = const FlutterSecureStorage();
+  bool _biometricAvailable = false;
   bool _biometricReady = false;
 
   @override
@@ -109,9 +110,15 @@ class _LoginPageState extends State<LoginPage> {
       final enrolled = await _biometric.getAvailableBiometrics();
       final savedUser = await _secure.read(key: 'eshokfix.biometric.username');
       final savedPin = await _secure.read(key: 'eshokfix.biometric.pin');
-      if (mounted) setState(() => _biometricReady = supported && enrolled.isNotEmpty && savedUser != null && savedPin != null);
+      if (mounted) setState(() {
+        _biometricAvailable = supported && enrolled.isNotEmpty;
+        _biometricReady = _biometricAvailable && savedUser != null && savedPin != null;
+      });
     } catch (_) {
-      if (mounted) setState(() => _biometricReady = false);
+      if (mounted) setState(() {
+        _biometricAvailable = false;
+        _biometricReady = false;
+      });
     }
   }
 
@@ -171,13 +178,17 @@ class _LoginPageState extends State<LoginPage> {
       if (_error != null) ...[const SizedBox(height: 12), _ErrorText(_error!)],
       const SizedBox(height: 20),
       FilledButton(onPressed: _busy ? null : _login, child: _busy ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Iniciar sesión')),
-      if (_biometricReady) ...[
+      if (_biometricAvailable) ...[
         const SizedBox(height: 10),
         OutlinedButton.icon(
           onPressed: _busy ? null : _loginWithBiometrics,
           icon: const Icon(Icons.fingerprint),
-          label: const Text('Iniciar con huella dactilar'),
+          label: Text(_biometricReady ? 'Iniciar con huella dactilar' : 'Activar acceso con huella'),
         ),
+      ],
+      if (_biometricAvailable && !_biometricReady) ...[
+        const SizedBox(height: 8),
+        const Text('Inicia sesión una vez con tu PIN para vincular esta cuenta con la huella del dispositivo.', textAlign: TextAlign.center, style: TextStyle(fontSize: 10, color: Color(0xFF81778D))),
       ],
     ]),
   );
