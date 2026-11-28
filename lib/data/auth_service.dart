@@ -257,12 +257,15 @@ class AuthService {
   }
 
   Future<List<Map<String, Object?>>> loginOptions() async {
-    return db.query(
-      'users',
-      columns: ['username', 'display_name', 'role'],
-      where: "active=1 AND COALESCE(password_hash,'') != ''",
-      orderBy: 'display_name COLLATE NOCASE',
-    );
+    return db.rawQuery("""
+      SELECT users.username, users.display_name, users.role,
+        CASE WHEN users.id = (
+          SELECT id FROM users WHERE UPPER(role)='ADMIN' ORDER BY id ASC LIMIT 1
+        ) THEN 1 ELSE 0 END AS is_primary_admin
+      FROM users
+      WHERE users.active=1 AND COALESCE(users.password_hash,'') != ''
+      ORDER BY users.display_name COLLATE NOCASE
+    """);
   }
 
   Future<List<Map<String, Object?>>> users() async {
