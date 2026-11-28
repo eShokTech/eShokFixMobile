@@ -870,13 +870,11 @@ class _SaleCartPageState extends State<SaleCartPage> {
                           final line = entry.value;
                           final selected = identical(_selectedLine, line);
                           final wholesaleDetail = line.wholesaleType == 'fixed'
-                              ? (line.wholesaleName ?? 'Mayoreo') + ' (-' + _money(line.discountPerUnit) + '/unidad)'
-                              : (line.wholesaleName ?? 'Mayoreo') + ' (-' +
-                                  (line.wholesaleValue ?? 0).toStringAsFixed(2) + '%)';
+                              ? '${line.wholesaleName ?? 'Mayoreo'} (-${_money(line.discountPerUnit)}/unidad)'
+                              : '${line.wholesaleName ?? 'Mayoreo'} (-${(line.wholesaleValue ?? 0).toStringAsFixed(2)}%)';
                           final priceSummary = line.hasWholesale
-                              ? _money(line.unitPrice) + ' base · ' + wholesaleDetail + ' · ' +
-                                  _money(line.effectiveUnitPrice) + ' c/u · ' + _money(line.total)
-                              : _money(line.unitPrice) + ' c/u · ' + _money(line.total);
+                              ? '${_money(line.unitPrice)} base · $wholesaleDetail · ${_money(line.effectiveUnitPrice)} c/u · ${_money(line.total)}'
+                              : '${_money(line.unitPrice)} c/u · ${_money(line.total)}';
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: GlassCard(
@@ -1615,8 +1613,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
             : 'Cantidad actualizada';
         _feedbackDetail = result.addedNew
             ? '${result.name} · ${_money(result.unitPrice)}. Se agregó al carrito.'
-            : 'Se sumó otra unidad de ' + result.name + ' · ' + _money(result.unitPrice) +
-                ' c/u. Cantidad en el carrito: ' + result.cartQuantity.toString() + '.';
+            : 'Se sumó otra unidad de ${result.name} · ${_money(result.unitPrice)} c/u. Cantidad en el carrito: ${result.cartQuantity}.';
         _feedbackIsError = false;
       });
     } catch (error) {
