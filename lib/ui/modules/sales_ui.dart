@@ -1623,7 +1623,7 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
               ),
               const SizedBox(height: 10),
               Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: GlassCard(
