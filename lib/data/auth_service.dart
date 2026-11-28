@@ -267,11 +267,14 @@ class AuthService {
 
   Future<List<Map<String, Object?>>> users() async {
     await _requirePermission('users.manage');
-    return db.query(
-    'users',
-    columns: ['id', 'username', 'display_name', 'role', 'active', 'created_at', 'last_login_at'],
-    orderBy: 'display_name',
-  );
+    return db.rawQuery("""
+      SELECT users.*,
+        CASE WHEN users.id = (
+          SELECT id FROM users WHERE UPPER(role)='ADMIN' ORDER BY id ASC LIMIT 1
+        ) THEN 1 ELSE 0 END AS protected_admin
+      FROM users
+      ORDER BY display_name COLLATE NOCASE
+    """);
   }
 
   Future<void> createUser({
