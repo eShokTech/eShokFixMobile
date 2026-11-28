@@ -232,14 +232,36 @@ class _SaleCartLine {
   final String description;
   double quantity;
   final double unitPrice;
+  String? wholesaleName;
+  String? wholesaleType;
+  double? wholesaleValue;
 
-  double get total => FinancialRules.money(quantity * unitPrice);
+  bool get hasWholesale => wholesaleType != null && wholesaleValue != null;
+
+  double get effectiveUnitPrice => !hasWholesale
+      ? unitPrice
+      : PosWholesaleRules.unitPriceAfterDiscount(
+          unitPrice: unitPrice,
+          type: wholesaleType!,
+          value: wholesaleValue!,
+        );
+
+  double get discountPerUnit => FinancialRules.money(unitPrice - effectiveUnitPrice);
+
+  double get total => FinancialRules.money(quantity * effectiveUnitPrice);
+
+  void applyWholesaleRule(Map<String, Object?> rule) {
+    wholesaleName = _str(rule['name']);
+    wholesaleType = _str(rule['type']);
+    wholesaleValue = _num(rule['value']);
+  }
 
   Map<String, Object?> toMap() => {
     'item_id': itemId,
     'description': description,
     'quantity': quantity,
-    'unit_price': unitPrice,
+    // Only the sale line receives this price; inventory catalog price remains unchanged.
+    'unit_price': effectiveUnitPrice,
   };
 }
 
@@ -257,6 +279,9 @@ class _SaleCartPageState extends State<SaleCartPage> {
   List<Map<String, Object?>> _products = [];
   List<Map<String, Object?>> _clients = [];
   final List<_SaleCartLine> _cart = [];
+  List<Map<String, Object?>> _wholesaleRules = [];
+  Map<String, Object?>? _saleWideWholesaleRule;
+  _SaleCartLine? _selectedLine;
   int? _clientId;
   bool _loading = true;
 
@@ -272,6 +297,29 @@ class _SaleCartPageState extends State<SaleCartPage> {
         widget.store.inventory(),
         widget.store.clients(),
       ]);
+      final rawRules = await widget.store.setting('pos.wholesale_rules', fallback: '[]');
+      final rules = <Map<String, Object?>>[];
+      try {
+        final decoded = jsonDecode(rawRules);
+        if (decoded is List) {
+          for (final entry in decoded) {
+            if (entry is! Map) continue;
+            final rule = Map<String, Object?>.from(entry);
+            final type = _str(rule['type']);
+            final value = _num(rule['value']);
+            if (_str(rule['id']).isEmpty ||
+                _str(rule['name']).trim().isEmpty ||
+                (type != 'fixed' && type != 'percentage') ||
+                !value.isFinite || value <= 0 ||
+                (type == 'percentage' && value > 100)) {
+              continue;
+            }
+            rules.add(rule);
+          }
+        }
+      } catch (_) {
+        // Ignore malformed settings instead of blocking a sale.
+      }
       if (!mounted) return;
       setState(() {
         _products = values[0]
@@ -280,6 +328,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
         _clients = values[1]
             .where((client) => (client['is_demo'] as num?)?.toInt() != 1)
             .toList();
+        _wholesaleRules = rules;
         _loading = false;
       });
     } catch (error) {
@@ -333,48 +382,241 @@ class _SaleCartPageState extends State<SaleCartPage> {
 
   double get _total => PurchaseAccounting.total(_subtotal, _discountValue);
 
-  void _addProduct(Map<String, Object?> product) {
+  int _addProduct(Map<String, Object?> product, {bool fromScanner = false}) {
     final id = product['id'] as int;
     final index = _cart.indexWhere((line) => line.itemId == id);
+    late int nextQuantity;
     setState(() {
       if (index >= 0) {
         _cart[index].quantity += 1;
+        nextQuantity = _cart[index].quantity.round();
       } else {
-        _cart.add(_SaleCartLine(
+        final line = _SaleCartLine(
           itemId: id,
           description: _str(product['name']),
           quantity: 1,
           unitPrice: _num(product['price']),
-        ));
+        );
+        if (_saleWideWholesaleRule != null) {
+          line.applyWholesaleRule(_saleWideWholesaleRule!);
+        }
+        _cart.add(line);
+        nextQuantity = 1;
       }
     });
-    _search.clear();
-    FocusScope.of(context).unfocus();
+    if (!fromScanner) {
+      _search.clear();
+      FocusScope.of(context).unfocus();
+    }
+    return nextQuantity;
+  }
+
+  Future<_ScanItemFeedback> _addScannedProduct(String code) async {
+    final product = await widget.store.inventoryItemByCode(code);
+    if (product == null || (product['is_demo'] as num?)?.toInt() == 1) {
+      throw StateError('No se encontró un producto real con el código ' + code + '.');
+    }
+    final itemId = product['id'] as int;
+    final isNew = !_cart.any((line) => line.itemId == itemId);
+    final cartQuantity = _addProduct(product, fromScanner: true);
+    return _ScanItemFeedback(
+      itemId: itemId,
+      name: _str(product['name']),
+      unitPrice: _num(product['price']),
+      cartQuantity: cartQuantity,
+      addedNew: isNew,
+    );
   }
 
   Future<void> _scanAndAdd() async {
-    final code = await Navigator.push<String>(
+    await Navigator.push<void>(
       context,
-      MaterialPageRoute(builder: (_) => const BarcodeScannerPage()),
+      MaterialPageRoute(
+        builder: (_) => BarcodeScannerPage(onContinuousScan: _addScannedProduct),
+      ),
     );
-    if (code == null || code.trim().isEmpty || !mounted) return;
-    try {
-      final product = await widget.store.inventoryItemByCode(code);
-      if (!mounted) return;
-      if (product == null || (product['is_demo'] as num?)?.toInt() == 1) {
+  }
+
+  Future<void> _addQuickItem() async {
+    final description = TextEditingController();
+    final amount = TextEditingController();
+    final quantity = TextEditingController(text: '1');
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Venta común'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: description,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(labelText: 'Nombre del artículo'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: amount,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Precio de venta', prefixText: r'$ '),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: quantity,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Cantidad'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Agregar al carrito'),
+          ),
+        ],
+      ),
+    );
+    if (saved == true && mounted) {
+      final value = double.tryParse(amount.text.trim().replaceAll(',', '.'));
+      final count = int.tryParse(quantity.text.trim());
+      if (description.text.trim().isEmpty ||
+          value == null || !value.isFinite || value < 0 ||
+          count == null || count < 1) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se encontró un producto real con el código $code.')),
+          const SnackBar(content: Text('Indica nombre, precio válido y cantidad mayor que cero.')),
         );
-        return;
-      }
-      _addProduct(product);
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('No se pudo leer el producto: $error')),
-        );
+      } else {
+        setState(() {
+          final line = _SaleCartLine(
+            description: description.text.trim(),
+            quantity: count.toDouble(),
+            unitPrice: value,
+          );
+          if (_saleWideWholesaleRule != null) {
+            line.applyWholesaleRule(_saleWideWholesaleRule!);
+          }
+          _cart.add(line);
+        });
       }
     }
+    description.dispose();
+    amount.dispose();
+    quantity.dispose();
+  }
+
+  Future<void> _showWholesaleMenu() async {
+    if (_wholesaleRules.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Primero configura tus precios de mayoreo en Configuración.')),
+      );
+      return;
+    }
+    if (_cart.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Agrega un artículo antes de aplicar mayoreo.')),
+      );
+      return;
+    }
+    String selectedId = _str(_wholesaleRules.first['id']);
+    bool applyToWholeSale = false;
+    final result = await showDialog<Map<String, Object?>?>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Aplicar precio de mayoreo'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ..._wholesaleRules.map((rule) {
+                  final fixed = _str(rule['type']) == 'fixed';
+                  final value = _num(rule['value']);
+                  return RadioListTile<String>(
+                    contentPadding: EdgeInsets.zero,
+                    value: _str(rule['id']),
+                    groupValue: selectedId,
+                    onChanged: (value) {
+                      if (value != null) setDialogState(() => selectedId = value);
+                    },
+                    title: Text(_str(rule['name']),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                    subtitle: Text(
+                      fixed
+                          ? 'Restar ' + _money(value) + ' por unidad'
+                          : 'Restar ' + value.toStringAsFixed(2) + '% del precio',
+                      style: const TextStyle(fontSize: 10, color: Color(0xFF81778D)),
+                    ),
+                    activeColor: eShokPurple,
+                  );
+                }),
+                const Divider(),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: applyToWholeSale,
+                  onChanged: (value) => setDialogState(() {
+                    applyToWholeSale = value ?? false;
+                  }),
+                  title: const Text('Aplicar a toda la venta',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                  subtitle: const Text(
+                    'Incluye los artículos que agregues después.',
+                    style: TextStyle(fontSize: 10, color: Color(0xFF81778D)),
+                  ),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final selected = _wholesaleRules.firstWhere(
+                  (rule) => _str(rule['id']) == selectedId,
+                );
+                Navigator.pop(dialogContext, {
+                  'rule': selected,
+                  'apply_all': applyToWholeSale,
+                });
+              },
+              child: const Text('Aplicar descuento'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final rule = Map<String, Object?>.from(result['rule'] as Map);
+    final applyAll = result['apply_all'] == true;
+    if (!applyAll && _selectedLine == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona primero un artículo del carrito o activa “Aplicar a toda la venta”.')),
+      );
+      return;
+    }
+    setState(() {
+      if (applyAll) {
+        _saleWideWholesaleRule = rule;
+        for (final line in _cart) {
+          line.applyWholesaleRule(rule);
+        }
+      } else {
+        _selectedLine!.applyWholesaleRule(rule);
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(applyAll
+            ? 'Mayoreo aplicado a toda la venta y a los artículos nuevos.'
+            : 'Mayoreo aplicado a ' + _selectedLine!.description + '.'),
+      ),
+    );
   }
 
   Future<void> _addService() async {
@@ -455,6 +697,8 @@ class _SaleCartPageState extends State<SaleCartPage> {
     setState(() {
       _cart.clear();
       _clientId = null;
+      _selectedLine = null;
+      _saleWideWholesaleRule = null;
       _discount.text = '0';
       _search.clear();
     });
@@ -500,36 +744,58 @@ class _SaleCartPageState extends State<SaleCartPage> {
                     onChanged: (value) => setState(() => _clientId = value),
                   ),
                   const SizedBox(height: 9),
+                  TextField(
+                    controller: _search,
+                    onChanged: (_) => setState(() {}),
+                    textInputAction: TextInputAction.search,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar producto, SKU o código',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _search.text.isEmpty
+                          ? null
+                          : IconButton(
+                              tooltip: 'Limpiar',
+                              onPressed: () {
+                                _search.clear();
+                                setState(() {});
+                              },
+                              icon: const Icon(Icons.close),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   Row(
                     children: [
                       Expanded(
-                        child: TextField(
-                          controller: _search,
-                          onChanged: (_) => setState(() {}),
-                          textInputAction: TextInputAction.search,
-                          decoration: InputDecoration(
-                            hintText: 'Buscar producto, SKU o código',
-                            prefixIcon: const Icon(Icons.search),
-                            suffixIcon: _search.text.isEmpty
-                                ? null
-                                : IconButton(
-                                    tooltip: 'Limpiar',
-                                    onPressed: () {
-                                      _search.clear();
-                                      setState(() {});
-                                    },
-                                    icon: const Icon(Icons.close),
-                                  ),
+                        child: SizedBox(
+                          height: 48,
+                          child: FilledButton.tonalIcon(
+                            onPressed: _addQuickItem,
+                            icon: const Icon(Icons.add_shopping_cart_outlined, size: 17),
+                            label: const Text('Venta común', style: TextStyle(fontSize: 10)),
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        height: 52,
-                        child: FilledButton.tonalIcon(
-                          onPressed: _scanAndAdd,
-                          icon: const Icon(Icons.qr_code_scanner),
-                          label: const Text('Escanear'),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: SizedBox(
+                          height: 48,
+                          child: FilledButton.tonalIcon(
+                            onPressed: _showWholesaleMenu,
+                            icon: const Icon(Icons.sell_outlined, size: 17),
+                            label: const Text('Mayoreo', style: TextStyle(fontSize: 10)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: SizedBox(
+                          height: 48,
+                          child: FilledButton.icon(
+                            onPressed: _scanAndAdd,
+                            icon: const Icon(Icons.qr_code_scanner, size: 17),
+                            label: const Text('Escanear', style: TextStyle(fontSize: 10)),
+                          ),
                         ),
                       ),
                     ],
@@ -577,7 +843,7 @@ class _SaleCartPageState extends State<SaleCartPage> {
               child: _cart.isEmpty
                   ? const EmptyState(
                       title: 'Carrito vacío',
-                      message: 'Busca un artículo, escanea su código o agrega un servicio.',
+                      message: 'Busca un producto, usa Venta común o escanea varios artículos.',
                     )
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
@@ -596,6 +862,83 @@ class _SaleCartPageState extends State<SaleCartPage> {
                           ],
                         ),
                         ..._cart.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final line = entry.value;
+                          final selected = identical(_selectedLine, line);
+                          final priceSummary = line.hasWholesale
+                              ? _money(line.unitPrice) + ' base · Mayoreo aplicado · ' +
+                                  _money(line.effectiveUnitPrice) + ' c/u · ' + _money(line.total)
+                              : _money(line.unitPrice) + ' c/u · ' + _money(line.total);
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: GlassCard(
+                              gradient: selected
+                                  ? const LinearGradient(
+                                      colors: [Color(0xFFF0E8FA), Colors.white],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                  : null,
+                              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () => setState(() => _selectedLine = line),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(line.description,
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                                          const SizedBox(height: 3),
+                                          Text(priceSummary,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: line.hasWholesale ? eShokPurple : const Color(0xFF81778D),
+                                              fontWeight: line.hasWholesale ? FontWeight.w700 : FontWeight.normal,
+                                            )),
+                                          if (selected)
+                                            const Text('Seleccionado para aplicar mayoreo',
+                                              style: TextStyle(fontSize: 9, color: eShokPurple, fontWeight: FontWeight.w700)),
+                                        ],
+                                      ),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Disminuir cantidad',
+                                      visualDensity: VisualDensity.compact,
+                                      onPressed: () => setState(() {
+                                        if (line.quantity > 1) {
+                                          line.quantity -= 1;
+                                        } else {
+                                          _cart.removeAt(index);
+                                          if (identical(_selectedLine, line)) _selectedLine = null;
+                                        }
+                                      }),
+                                      icon: const Icon(Icons.remove_circle_outline),
+                                    ),
+                                    Text(line.quantity.toStringAsFixed(0),
+                                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                                    IconButton(
+                                      tooltip: 'Aumentar cantidad',
+                                      visualDensity: VisualDensity.compact,
+                                      onPressed: () => setState(() => line.quantity += 1),
+                                      icon: const Icon(Icons.add_circle_outline, color: eShokPurple),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _discount,                        TextField(
+                          controller: _discount,                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _discount,
                           final index = entry.key;
                           final line = entry.value;
                           return Padding(
@@ -1151,8 +1494,39 @@ class _SaleSuccessPage extends StatelessWidget {
     );
 }
 
+class _ScanItemFeedback {
+  const _ScanItemFeedback({
+    required this.itemId,
+    required this.name,
+    required this.unitPrice,
+    required this.cartQuantity,
+    required this.addedNew,
+  });
+
+  final int itemId;
+  final String name;
+  final double unitPrice;
+  final int cartQuantity;
+  final bool addedNew;
+}
+
+class _ScannedProductCounter {
+  const _ScannedProductCounter({
+    required this.name,
+    required this.quantity,
+  });
+
+  final String name;
+  final int quantity;
+}
+
 class BarcodeScannerPage extends StatefulWidget {
-  const BarcodeScannerPage({super.key});
+  const BarcodeScannerPage({
+    super.key,
+    this.onContinuousScan,
+  });
+
+  final Future<_ScanItemFeedback> Function(String code)? onContinuousScan;
 
   @override
   State<BarcodeScannerPage> createState() => _BarcodeScannerPageState();
@@ -1161,6 +1535,15 @@ class BarcodeScannerPage extends StatefulWidget {
 class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   late final MobileScannerController _controller;
   bool _finished = false;
+  bool _processing = false;
+  final Map<int, _ScannedProductCounter> _scannedProducts = {};
+  String? _feedbackTitle;
+  String? _feedbackDetail;
+  bool _feedbackIsError = false;
+
+  bool get _continuous => widget.onContinuousScan != null;
+  int get _totalUnits =>
+      _scannedProducts.values.fold<int>(0, (sum, item) => sum + item.quantity);
 
   @override
   void initState() {
@@ -1177,21 +1560,62 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   }
 
   void _onDetect(BarcodeCapture capture) {
-    if (_finished) return;
+    if (_finished || _processing) return;
+    String? value;
     for (final barcode in capture.barcodes) {
-      final value = barcode.rawValue?.trim();
-      if (value != null && value.isNotEmpty) {
-        _finished = true;
-        Navigator.pop(context, value);
-        return;
+      final candidate = barcode.rawValue?.trim();
+      if (candidate != null && candidate.isNotEmpty) {
+        value = candidate;
+        break;
       }
+    }
+    if (value == null) return;
+
+    if (!_continuous) {
+      _finished = true;
+      Navigator.pop(context, value);
+      return;
+    }
+
+    _processing = true;
+    unawaited(_processContinuousCode(value));
+  }
+
+  Future<void> _processContinuousCode(String code) async {
+    try {
+      final result = await widget.onContinuousScan!(code);
+      if (!mounted) return;
+      setState(() {
+        final previous = _scannedProducts[result.itemId]?.quantity ?? 0;
+        _scannedProducts[result.itemId] = _ScannedProductCounter(
+          name: result.name,
+          quantity: previous + 1,
+        );
+        _feedbackTitle = result.addedNew
+            ? 'Producto agregado correctamente'
+            : 'Cantidad actualizada';
+        _feedbackDetail = result.addedNew
+            ? result.name + ' · ' + _money(result.unitPrice) + '. Se agregó al carrito.'
+            : 'Se sumó otra unidad de ' + result.name +
+                '. Cantidad en el carrito: ' + result.cartQuantity.toString() + '.';
+        _feedbackIsError = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _feedbackTitle = 'No se pudo agregar el código';
+        _feedbackDetail = '$error';
+        _feedbackIsError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _processing = false);
     }
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Escanear código de barras'),
+      title: Text(_continuous ? 'Escaneo de venta' : 'Escanear código de barras'),
       actions: [
         IconButton(
           tooltip: 'Encender o apagar linterna',
@@ -1224,26 +1648,231 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
             ),
           ),
         ),
-        Positioned(
-          left: 24,
-          right: 24,
-          bottom: 34,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: .65),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Text(
-              'Coloca el código dentro del recuadro. La lectura se realiza automáticamente.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 12),
+        if (_continuous)
+          Positioned(
+            top: 8,
+            left: 10,
+            right: 10,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: .68),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: Text('Productos escaneados',
+                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800)),
+                      ),
+                      Text(_scannedProducts.length.toString() + ' diferentes · ' +
+                          _totalUnits.toString() + ' unidades',
+                        style: const TextStyle(color: Colors.white70, fontSize: 9)),
+                    ],
+                  ),
+                  const SizedBox(height: 5),
+                  SizedBox(
+                    height: 90,
+                    child: _scannedProducts.isEmpty
+                        ? const Center(
+                            child: Text('Los contadores aparecerán aquí al leer productos.',
+                              style: TextStyle(color: Colors.white70, fontSize: 10)),
+                          )
+                        : ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: _scannedProducts.entries.map((entry) {
+                              final item = entry.value;
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: _ScanProductBubble(
+                                  name: item.name,
+                                  quantity: item.quantity,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
+        if (_continuous && _feedbackTitle != null)
+          Positioned(
+            left: 14,
+            right: 14,
+            bottom: 88,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _feedbackIsError
+                    ? const Color(0xFF9E3F4C).withValues(alpha: .96)
+                    : const Color(0xFF4E347D).withValues(alpha: .96),
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 14, offset: Offset(0, 5)),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _feedbackIsError ? Icons.error_outline : Icons.check_circle,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(_feedbackTitle!,
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
+                        const SizedBox(height: 2),
+                        Text(_feedbackDetail ?? '',
+                          style: const TextStyle(color: Colors.white, fontSize: 10)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (_continuous)
+          Positioned(
+            left: 14,
+            right: 14,
+            bottom: 10,
+            child: SafeArea(
+              top: false,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.check),
+                label: Text(_totalUnits == 0
+                    ? 'Terminar escaneo'
+                    : 'Terminar escaneo · ' + _totalUnits.toString() + ' unidades'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+              ),
+            ),
+          )
+        else
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 34,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: .65),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Text(
+                'Coloca el código dentro del recuadro. La lectura se realiza automáticamente.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          ),
       ],
     ),
   );
+}
+
+class _ScanProductBubble extends StatelessWidget {
+  const _ScanProductBubble({
+    required this.name,
+    required this.quantity,
+  });
+
+  final String name;
+  final int quantity;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: name,
+    child: SizedBox(
+      width: 84,
+      height: 84,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          CustomPaint(
+            size: const Size(84, 84),
+            painter: _ScanProductRingPainter(name),
+          ),
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: eShokPurple,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: const [
+                BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 2)),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: Text(quantity.toString(),
+              style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900)),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _ScanProductRingPainter extends CustomPainter {
+  const _ScanProductRingPainter(this.name);
+
+  final String name;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width * .43;
+    final letters = name.toUpperCase().runes.map(String.fromCharCode).toList();
+    if (letters.isEmpty) return;
+    final visibleLetters = letters.length > 22
+        ? [...letters.take(21), '…']
+        : letters;
+    final step = (2 * math.pi) / visibleLetters.length;
+
+    for (var index = 0; index < visibleLetters.length; index++) {
+      final angle = -math.pi / 2 + step * index;
+      final painter = TextPainter(
+        text: TextSpan(
+          text: visibleLetters[index],
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 6.5,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final position = Offset(
+        center.dx + math.cos(angle) * radius,
+        center.dy + math.sin(angle) * radius,
+      );
+      canvas.save();
+      canvas.translate(position.dx, position.dy);
+      var rotation = angle + math.pi / 2;
+      if (rotation > math.pi / 2 && rotation < math.pi * 1.5) {
+        rotation += math.pi;
+      }
+      canvas.rotate(rotation);
+      painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScanProductRingPainter oldDelegate) =>
+      oldDelegate.name != name;
 }
 
 Future<void> _printPosTicket(

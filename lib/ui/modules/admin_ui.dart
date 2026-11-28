@@ -397,6 +397,8 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ])),
       const SizedBox(height: 10),
+      WholesaleDiscountSettingsSection(store: widget.store),
+      const SizedBox(height: 10),
       GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Base de datos y respaldos', style: TextStyle(fontWeight: FontWeight.w800)),
         const SizedBox(height: 5),
@@ -462,6 +464,223 @@ class _SettingsPageState extends State<SettingsPage> {
   );
 }
 
+
+class WholesaleDiscountSettingsSection extends StatefulWidget {
+  const WholesaleDiscountSettingsSection({super.key, required this.store});
+
+  final LocalStore store;
+
+  @override
+  State<WholesaleDiscountSettingsSection> createState() =>
+      _WholesaleDiscountSettingsSectionState();
+}
+
+class _WholesaleDiscountSettingsSectionState
+    extends State<WholesaleDiscountSettingsSection> {
+  List<Map<String, Object?>> _rules = [];
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final raw = await widget.store.setting('pos.wholesale_rules', fallback: '[]');
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        _rules = decoded
+            .whereType<Map>()
+            .map((entry) => Map<String, Object?>.from(entry))
+            .toList();
+      }
+    } catch (_) {
+      _rules = [];
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _persist() async {
+    setState(() => _saving = true);
+    try {
+      await widget.store.saveSetting('pos.wholesale_rules', jsonEncode(_rules));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Precios de mayoreo guardados.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudieron guardar los precios de mayoreo: ' + error.toString())),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _addRule() async {
+    final name = TextEditingController();
+    final amount = TextEditingController();
+    String type = 'fixed';
+    final result = await showDialog<Map<String, Object?>?>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Nuevo precio de mayoreo'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(labelText: 'Nombre del descuento'),
+              ),
+              const SizedBox(height: 9),
+              DropdownButtonFormField<String>(
+                initialValue: type,
+                decoration: const InputDecoration(labelText: 'Tipo de descuento'),
+                items: const [
+                  DropdownMenuItem(value: 'fixed', child: Text('Fijo: restar pesos por unidad')),
+                  DropdownMenuItem(value: 'percentage', child: Text('Porcentaje del precio')),
+                ],
+                onChanged: (value) => setDialogState(() => type = value ?? 'fixed'),
+              ),
+              const SizedBox(height: 9),
+              TextField(
+                controller: amount,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: type == 'fixed' ? 'Importe a restar por unidad' : 'Porcentaje a descontar',
+                  prefixText: type == 'fixed' ? r'$ ' : null,
+                  suffixText: type == 'percentage' ? '%' : null,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                type == 'fixed'
+                    ? 'Ejemplo: $20 resta veinte pesos al precio de cada unidad.'
+                    : 'Ejemplo: 15% resta el quince por ciento del precio unitario.',
+                style: const TextStyle(fontSize: 10, color: Color(0xFF81778D)),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, {
+                'name': name.text.trim(),
+                'type': type,
+                'value': double.tryParse(amount.text.trim().replaceAll(',', '.')),
+              }),
+              child: const Text('Agregar'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      final value = result['value'];
+      final kind = _str(result['type']);
+      if (_str(result['name']).isEmpty ||
+          value is! double || !value.isFinite || value <= 0 ||
+          (kind == 'percentage' && value > 100)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Revisa el nombre y el importe. El porcentaje debe estar entre 0 y 100.')),
+        );
+      } else {
+        setState(() {
+          _rules.add({
+            'id': DateTime.now().microsecondsSinceEpoch.toString(),
+            'name': result['name'],
+            'type': kind,
+            'value': value,
+          });
+        });
+        await _persist();
+      }
+    }
+    name.dispose();
+    amount.dispose();
+  }
+
+  Future<void> _removeRule(String id) async {
+    setState(() => _rules.removeWhere((rule) => _str(rule['id']) == id));
+    await _persist();
+  }
+
+  @override
+  Widget build(BuildContext context) => GlassCard(
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Precios de mayoreo', style: TextStyle(fontWeight: FontWeight.w800)),
+                  SizedBox(height: 4),
+                  Text(
+                    'Crea descuentos fijos por unidad o porcentajes para usarlos desde el POS.',
+                    style: TextStyle(fontSize: 10, color: Color(0xFF81778D), height: 1.35),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.sell_outlined, color: eShokPurple),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_loading)
+          const LinearProgressIndicator()
+        else if (_rules.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text('Todavía no hay descuentos configurados.',
+              style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+          )
+        else
+          ..._rules.map((rule) {
+            final fixed = _str(rule['type']) == 'fixed';
+            final value = _num(rule['value']);
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: const Icon(Icons.local_offer_outlined, color: eShokPurple),
+              title: Text(_str(rule['name']),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+              subtitle: Text(
+                fixed ? 'Restar ' + _money(value) + ' por unidad' : 'Restar ' + value.toStringAsFixed(2) + '%',
+                style: const TextStyle(fontSize: 10, color: Color(0xFF81778D)),
+              ),
+              trailing: IconButton(
+                tooltip: 'Eliminar descuento',
+                onPressed: _saving ? null : () => _removeRule(_str(rule['id'])),
+                icon: const Icon(Icons.delete_outline, color: Color(0xFFB65E69)),
+              ),
+            );
+          }),
+        const SizedBox(height: 6),
+        OutlinedButton.icon(
+          onPressed: _loading || _saving ? null : _addRule,
+          icon: _saving
+              ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.add),
+          label: const Text('Nuevo precio de mayoreo'),
+        ),
+      ],
+    ),
+  );
+}
 
 Widget _settingsRow(
   BuildContext context,
