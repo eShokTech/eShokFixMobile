@@ -102,6 +102,29 @@ class MainActivity : FlutterFragmentActivity() {
                         if (!apk.exists() || apk.length() < 1024) {
                             throw IllegalArgumentException("El APK no existe o está incompleto.")
                         }
+                        val archiveInfo = packageManager.getPackageArchiveInfo(
+                            apk.absolutePath,
+                            android.content.pm.PackageManager.GET_ACTIVITIES
+                        ) ?: throw IllegalArgumentException("Android no reconoce el archivo como APK instalable.")
+                        if (archiveInfo.packageName != packageName) {
+                            throw IllegalArgumentException("El APK pertenece a otra aplicación.")
+                        }
+                        val installedInfo = packageManager.getPackageInfo(packageName, 0)
+                        val downloadedVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            archiveInfo.longVersionCode
+                        } else {
+                            @Suppress("DEPRECATION")
+                            archiveInfo.versionCode.toLong()
+                        }
+                        val installedVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            installedInfo.longVersionCode
+                        } else {
+                            @Suppress("DEPRECATION")
+                            installedInfo.versionCode.toLong()
+                        }
+                        if (downloadedVersion <= installedVersion) {
+                            throw IllegalArgumentException("Esta versión no es más reciente que la instalada.")
+                        }
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
                             !packageManager.canRequestPackageInstalls()) {
                             result.error("INSTALL_PERMISSION_REQUIRED",
