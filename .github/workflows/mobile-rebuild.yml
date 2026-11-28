@@ -100,14 +100,19 @@ jobs:
         if: steps.signing.outputs.ready == 'true'
         run: flutter build apk --release --build-number "${GITHUB_RUN_NUMBER}" --dart-define=ESHOKFIX_VERSION="0.2.0+${GITHUB_RUN_NUMBER}"
 
+      - name: Name update APK
+        if: steps.signing.outputs.ready == 'true'
+        run: cp build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk
+
       - name: Publish in-app update
         if: steps.signing.outputs.ready == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: mobile-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
           name: eShokFix Mobile ${{ github.run_number }}
           body: |
             Version: 0.2.0+${{ github.run_number }}
             Actualización de eShokFix Mobile.
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: build/app/outputs/flutter-apk/eShokFix-Mobile-release.apk
           make_latest: true
