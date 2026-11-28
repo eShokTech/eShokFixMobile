@@ -63,6 +63,7 @@ class _ClientsPageState extends State<ClientsPage> {
                   if (_can('clients.delete'))
                     Expanded(child: FilledButton.tonalIcon(
                       onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
                         final confirmed = await showDialog<bool>(
                           context: context,
                           builder: (dialogContext) => AlertDialog(
@@ -75,7 +76,6 @@ class _ClientsPageState extends State<ClientsPage> {
                           ),
                         );
                         if (confirmed != true || !mounted) return;
-                        final messenger = ScaffoldMessenger.of(context);
                         try {
                           await widget.store.deleteClient(c['id'] as int);
                           if (!mounted) return;
