@@ -212,10 +212,14 @@ class _AppUpdatePageState extends State<AppUpdatePage> {
     });
     try {
       final release = await _service.latestRelease();
+      final installedVersionCode = await _service.installedVersionCode();
       if (!mounted) return;
+      final updateAvailable = release.versionCode > installedVersionCode;
       setState(() {
-        _release = release;
-        _status = 'Versión disponible: ${release.version}. APK verificado por tamaño y formato.';
+        _release = updateAvailable ? release : null;
+        _status = updateAvailable
+            ? 'Nueva versión disponible: ${release.version}. APK verificado por tamaño y formato.'
+            : '¡YA ESTÁ ACTUALIZADO! Tienes instalada la última versión (${release.version}).';
       });
     } catch (error) {
       if (!mounted) return;
