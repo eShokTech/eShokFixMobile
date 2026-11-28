@@ -317,7 +317,7 @@ class _InventoryFormDialogState extends State<InventoryFormDialog> {
             ),
             if (pricingMethod != ProductPricingRules.directCost) ...[
               const SizedBox(height: 12),
-              _field(pricingValue, pricingMethod == ProductPricingRules.fixedProfit ? 'Ganancia fija ($)' : 'Porcentaje (%)',
+              _field(pricingValue, pricingMethod == ProductPricingRules.fixedProfit ? 'Ganancia fija (\$)' : 'Porcentaje (%)',
                 number: true, onChanged: (_) => setState(() {})),
             ],
             const SizedBox(height: 8),
@@ -450,7 +450,9 @@ class InventoryPriceHistoryDialog extends StatelessWidget {
         future: store.inventoryPriceHistory(item['id'] as int),
         builder: (context, snapshot) {
           if (snapshot.hasError) return Center(child: Text('No se pudo cargar el historial: ${snapshot.error}'));
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
           final rows = snapshot.data!;
           if (rows.isEmpty) return const Center(child: Padding(
             padding: EdgeInsets.all(24),
