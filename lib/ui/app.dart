@@ -390,10 +390,6 @@ class _DashboardPageState extends State<DashboardPage> {
           if (recent.isEmpty) const EmptyState(title: 'Aún no hay órdenes', message: 'Registra tu primer equipo para comenzar.'),
           ...recent.map((o) => OrderListTile(order: o, onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailPage(store: widget.store, orderId: o['id'] as int))))),
           const SizedBox(height: 12),
-          GlassCard(child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Icon(Icons.sync_problem_outlined, color: eShokPurple), const SizedBox(width: 10),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Sincronización pendiente', style: TextStyle(fontWeight: FontWeight.w800)), const SizedBox(height: 4), Text('${d['pending_local']} movimientos registrados localmente. La conexión con el servidor de PC aún no está activa.', style: const TextStyle(fontSize: 11, color: Color(0xFF81768D), height: 1.35))])),
-          ])),
         ],
       ));
     },
