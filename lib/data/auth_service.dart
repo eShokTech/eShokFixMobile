@@ -256,6 +256,15 @@ class AuthService {
     await _secureStorage.delete(key: sessionKey);
   }
 
+  Future<List<Map<String, Object?>>> loginOptions() async {
+    return db.query(
+      'users',
+      columns: ['username', 'display_name', 'role'],
+      where: "active=1 AND COALESCE(password_hash,'') != ''",
+      orderBy: 'display_name COLLATE NOCASE',
+    );
+  }
+
   Future<List<Map<String, Object?>>> users() async {
     await _requirePermission('users.manage');
     return db.query(
