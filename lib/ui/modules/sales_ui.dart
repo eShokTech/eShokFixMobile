@@ -1554,18 +1554,6 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
                 _transferReference.clear();
               }),
             ),
-            GlassCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Total a cobrar',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF81778D))),
-                  const SizedBox(height: 3),
-                  Text(_money(widget.total),
-                    style: const TextStyle(fontSize: 31, fontWeight: FontWeight.w900, color: eShokPurple)),
-                ],
-              ),
-            ),
             const SizedBox(height: 14),
             if (_isCash) ...[
               const SizedBox(height: 14),
