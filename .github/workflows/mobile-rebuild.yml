@@ -70,7 +70,7 @@ jobs:
           EOF
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
-      - name: Apply official eShokFix PNG launcher icon
+      - name: Apply approved eShokFix logo PNG without alterations
         if: steps.signing.outputs.ready == 'true'
         shell: bash
         run: |
@@ -78,22 +78,14 @@ jobs:
           SOURCE="assets/branding/eshokfix_logo.png"
           RES="android/app/src/main/res"
           test -s "$SOURCE"
-          if ! command -v convert >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y imagemagick
-          fi
           mkdir -p "$RES/drawable-nodpi"
-          convert "$SOURCE" -trim +repage -resize 340x340 -gravity center -background none -extent 432x432 "$RES/drawable-nodpi/eshokfix_logo_foreground.png"
-          for spec in "mdpi:48" "hdpi:72" "xhdpi:96" "xxhdpi:144" "xxxhdpi:192"; do
-            density="${spec%%:*}"
-            size="${spec##*:}"
+          cp "$SOURCE" "$RES/drawable-nodpi/eshokfix_logo_foreground.png"
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             mkdir -p "$RES/mipmap-$density"
-            convert -size "${size}x${size}" xc:"#6C4AB6" \
-              \( "$SOURCE" -trim +repage -resize "75%x75%" \) \
-              -gravity center -composite "$RES/mipmap-$density/ic_launcher.png"
-            cp "$RES/mipmap-$density/ic_launcher.png" "$RES/mipmap-$density/ic_launcher_round.png"
+            cp "$SOURCE" "$RES/mipmap-$density/ic_launcher.png"
+            cp "$SOURCE" "$RES/mipmap-$density/ic_launcher_round.png"
           done
-          echo "Official eShokFix PNG logo applied to Android launcher icons."
+          echo "Copied the approved PNG byte-for-byte. No crop, recolor, redraw, or decoration."
       - name: Build debug APK
         if: steps.signing.outputs.ready == 'true'
         run: flutter build apk --debug --no-pub --build-number "${GITHUB_RUN_NUMBER}"
