@@ -102,9 +102,17 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
     }
   }
 
+  bool _backgroundLogoutInProgress = false;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _isForeground = state == AppLifecycleState.resumed;
+    if (state == AppLifecycleState.paused && _user != null &&
+        !_backgroundLogoutInProgress) {
+      _backgroundLogoutInProgress = true;
+      _logout().whenComplete(() => _backgroundLogoutInProgress = false);
+      return;
+    }
     if (_isForeground && _user != null) {
       _validateSessionOnResume();
     }
