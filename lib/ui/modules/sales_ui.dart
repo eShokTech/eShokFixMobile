@@ -1813,7 +1813,9 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   late final MobileScannerController _controller;
   bool _finished = false;
   bool _processing = false;
-  bool _awaitingBarcodeClear = false;
+  String? _lastAcceptedCode;
+  String? _activeCode;
+  String? _pendingCode;
   final Map<int, _ScannedProductCounter> _scannedProducts = {};
   String? _feedbackTitle;
   String? _feedbackDetail;
@@ -1848,15 +1850,10 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
     }
 
     if (value == null) {
-      _awaitingBarcodeClear = false;
+      _lastAcceptedCode = null;
       return;
     }
     if (_finished) return;
-    if (_processing) {
-      _awaitingBarcodeClear = true;
-      return;
-    }
-    if (_continuous && _awaitingBarcodeClear) return;
 
     if (!_continuous) {
       _finished = true;
@@ -1864,15 +1861,30 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
       return;
     }
 
-    _awaitingBarcodeClear = true;
+    // Ignora los frames repetidos del mismo código, pero acepta otro distinto.
+    if (value == _lastAcceptedCode || value == _activeCode || value == _pendingCode) return;
+    _lastAcceptedCode = value;
+
+    if (_processing) {
+      // Conserva el siguiente código distinto mientras termina la operación actual.
+      _pendingCode = value;
+      return;
+    }
+
+    _startContinuousCode(value);
+  }
+
+  void _startContinuousCode(String code) {
+    if (_finished || _processing) return;
     _processing = true;
-    unawaited(_processContinuousCode(value));
+    _activeCode = code;
+    unawaited(_processContinuousCode(code));
   }
 
   Future<void> _addOneMore(String code) async {
     if (_processing || _finished) return;
-    setState(() => _processing = true);
-    await _processContinuousCode(code);
+    _lastAcceptedCode = code;
+    _startContinuousCode(code);
   }
 
   Future<void> _processContinuousCode(String code) async {
@@ -1902,7 +1914,14 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
         _feedbackIsError = true;
       });
     } finally {
-      if (mounted) setState(() => _processing = false);
+      if (mounted) {
+        final nextCode = _pendingCode;
+        _pendingCode = null;
+        _activeCode = null;
+        _processing = false;
+        if (nextCode != null && !_finished) _startContinuousCode(nextCode);
+        setState(() {});
+      }
     }
   }
 
