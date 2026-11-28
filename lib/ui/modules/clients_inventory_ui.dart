@@ -178,6 +178,7 @@ class InventoryPage extends StatefulWidget {
 class _InventoryPageState extends State<InventoryPage> {
   final _query = TextEditingController();
   late Future<List<Map<String, Object?>>> _future;
+  int? _selectedItemId;
   @override
   void initState() { super.initState(); _refresh(); }
   void _refresh() => _future = widget.store.inventory(query: _query.text);
@@ -205,26 +206,86 @@ class _InventoryPageState extends State<InventoryPage> {
         final metrics = _canViewCost()
             ? ProductPricingRules.metrics(cost: _num(item['cost']), salePrice: _num(item['price']))
             : null;
-        return Padding(padding: const EdgeInsets.only(top: 8), child: GlassCard(child: Row(children: [
-          Container(width: 42, height: 42, decoration: BoxDecoration(color: low ? const Color(0xFFFFF1E2) : eShokPurpleLight.withValues(alpha: .28), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.inventory_2_outlined, color: low ? const Color(0xFFCA7B2C) : eShokPurple)),
-          const SizedBox(width: 10), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_str(item['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
-            const SizedBox(height: 3),
-            Text('${_str(item['sku'], 'Sin SKU')} · ${_str(item['barcode'], 'Sin barras')} · ${_str(item['category'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))),
-            const SizedBox(height: 4),
-            Text('${_num(item['stock']).toStringAsFixed(0)} en existencia · ${_money(item['price'])}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: eShokInk)),
-            if (metrics != null) ...[
-              const SizedBox(height: 3),
-              Text('Costo ${_money(item['cost'])} · Utilidad ${_money(metrics['profit'])}', style: const TextStyle(fontSize: 9, color: Color(0xFF756A85))),
-              Text(metrics['margin_percent'] == null
-                  ? 'Margen no calculable'
-                  : 'Margen ${metrics['margin_percent']!.toStringAsFixed(1)}% · Sobre costo ${metrics['markup_percent']!.toStringAsFixed(1)}%',
-                style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
-                  color: (metrics['profit'] ?? 0) < 0 ? const Color(0xFFC14F5A) : const Color(0xFF29966F))),
-            ],
-          ])),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [if (low) const Text('STOCK BAJO', style: TextStyle(fontSize: 8, color: Color(0xFFCA7B2C), fontWeight: FontWeight.w900)), if (_canManage()) TextButton(onPressed: () => _adjust(item), child: const Text('Movimiento', style: TextStyle(fontSize: 10))), if (_canManage() || _canViewCost()) PopupMenuButton<String>(onSelected: (v) { if (v == 'edit') _edit(item); if (v == 'adjust') _adjust(item); if (v == 'history') _history(item); }, itemBuilder: (_) => [if (_canManage()) const PopupMenuItem(value: 'edit', child: Text('Editar artículo')), if (_canManage()) const PopupMenuItem(value: 'adjust', child: Text('Ajustar stock')), if (_canViewCost()) const PopupMenuItem(value: 'history', child: Text('Historial de precios'))])]),
-        ])));
+        final selected = _selectedItemId == item['id'];
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: GlassCard(
+            child: Column(children: [
+              InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () => setState(() => _selectedItemId = selected ? null : item['id'] as int),
+                child: Row(children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: low ? const Color(0xFFFFF1E2) : eShokPurpleLight.withValues(alpha: .28),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(Icons.inventory_2_outlined, color: low ? const Color(0xFFCA7B2C) : eShokPurple),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_str(item['name']), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                    const SizedBox(height: 3),
+                    Text('${_str(item['sku'], 'Sin SKU')} · ${_str(item['barcode'], 'Sin barras')} · ${_str(item['category'])}',
+                      style: const TextStyle(fontSize: 9, color: Color(0xFF8B8296))),
+                    const SizedBox(height: 4),
+                    Text('${_num(item['stock']).toStringAsFixed(0)} en existencia · ${_money(item['price'])}',
+                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: eShokInk)),
+                    if (metrics != null) ...[
+                      const SizedBox(height: 3),
+                      Text('Costo ${_money(item['cost'])} · Utilidad ${_money(metrics['profit'])}',
+                        style: const TextStyle(fontSize: 9, color: Color(0xFF756A85))),
+                      Text(metrics['margin_percent'] == null
+                          ? 'Margen no calculable'
+                          : 'Margen ${metrics['margin_percent']!.toStringAsFixed(1)}% · Sobre costo ${metrics['markup_percent']!.toStringAsFixed(1)}%',
+                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700,
+                          color: (metrics['profit'] ?? 0) < 0 ? const Color(0xFFC14F5A) : const Color(0xFF29966F))),
+                    ],
+                  ])),
+                  const SizedBox(width: 6),
+                  Icon(selected ? Icons.expand_less : Icons.expand_more, color: eShokPurple),
+                ]),
+              ),
+              if (low) ...[
+                const SizedBox(height: 6),
+                const Align(alignment: Alignment.centerLeft,
+                  child: Text('STOCK BAJO', style: TextStyle(fontSize: 8, color: Color(0xFFCA7B2C), fontWeight: FontWeight.w900))),
+              ],
+              if (selected && (_canManage() || _canViewCost())) ...[
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 9),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (_canManage())
+                      OutlinedButton.icon(
+                        onPressed: () => _edit(item),
+                        icon: const Icon(Icons.edit_outlined),
+                        label: const Text('Editar artículo'),
+                      ),
+                    if (_canManage())
+                      OutlinedButton.icon(
+                        onPressed: () => _adjust(item),
+                        icon: const Icon(Icons.tune),
+                        label: const Text('Ajustar stock'),
+                      ),
+                    if (_canViewCost())
+                      OutlinedButton.icon(
+                        onPressed: () => _history(item),
+                        icon: const Icon(Icons.price_change_outlined),
+                        label: const Text('Historial de precios'),
+                      ),
+                  ],
+                ),
+              ],
+            ]),
+          ),
+        );
+
       });
     })),
   ]));
