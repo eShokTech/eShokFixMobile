@@ -1539,19 +1539,6 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
-            GlassCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Total a cobrar',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF81778D))),
-                  const SizedBox(height: 3),
-                  Text(_money(widget.total),
-                    style: const TextStyle(fontSize: 31, fontWeight: FontWeight.w900, color: eShokPurple)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
             const SectionHeading('Forma de pago'),
             const SizedBox(height: 8),
             SegmentedButton<String>(
@@ -1567,6 +1554,19 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
                 _transferReference.clear();
               }),
             ),
+            GlassCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Total a cobrar',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF81778D))),
+                  const SizedBox(height: 3),
+                  Text(_money(widget.total),
+                    style: const TextStyle(fontSize: 31, fontWeight: FontWeight.w900, color: eShokPurple)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
             if (_isCash) ...[
               const SizedBox(height: 14),
               const Text('Moneda recibida',
@@ -1612,42 +1612,63 @@ class _SaleCheckoutPageState extends State<SaleCheckoutPage> {
                       style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
                   ),
               ],
-              TextField(
-                controller: _received,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  labelText: _isUsdCash ? 'Dólares recibidos' : 'Efectivo recibido',
-                  prefixText: _isUsdCash ? r'US$ ' : r'$ ',
-                ),
-              ),
-              const SizedBox(height: 10),
               GlassCard(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFF1EBF9), Colors.white],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
+                padding: const EdgeInsets.all(18),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_isUsdCash ? 'Equivalente en pesos' : 'Cambio a entregar',
-                      style: const TextStyle(fontSize: 11, color: Color(0xFF81778D))),
-                    const SizedBox(height: 3),
-                    Text(
-                      _isUsdCash ? _money(_receivedInPesos) : _money(_change),
-                      style: const TextStyle(fontSize: 27, fontWeight: FontWeight.w900, color: eShokPurple),
+                    Text(_isUsdCash ? 'Dólares recibidos' : 'Efectivo recibido',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _received,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      onChanged: (_) => setState(() {}),
+                      style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w800),
+                      decoration: InputDecoration(
+                        prefixText: _isUsdCash ? r'US$ ' : r'$ ',
+                        hintText: '0.00',
+                      ),
                     ),
-                    if (_isUsdCash) ...[
-                      const SizedBox(height: 4),
-                      Text('Cambio en MXN: ${_money(_change)}',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-                    ],
-                    if (shortfall > 0)
-                      Text('Faltan ${_money(shortfall)}',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFFB65E69), fontWeight: FontWeight.w800)),
                   ],
                 ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: GlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('Total a cobrar', style: TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+                          const SizedBox(height: 5),
+                          Text(_money(widget.total), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: eShokPurple)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: GlassCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(_isUsdCash ? 'Cambio en MXN' : 'Cambio a entregar',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF81778D))),
+                          const SizedBox(height: 5),
+                          Text(_money(_change), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF279B70))),
+                          if (shortfall > 0)
+                            Text('Faltan ${_money(shortfall)}',
+                              style: const TextStyle(fontSize: 10, color: Color(0xFFB65E69), fontWeight: FontWeight.w800)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
             if (_method == 'TRANSFERENCIA') ...[
