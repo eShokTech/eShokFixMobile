@@ -80,6 +80,15 @@ class MainActivity : FlutterFragmentActivity() {
             UPDATE_CHANNEL_NAME
         ).setMethodCallHandler { call, result ->
             when (call.method) {
+                "getInstalledVersionCode" -> {
+                    val packageInfo = packageManager.getPackageInfo(packageName, 0)
+                    result.success(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        packageInfo.longVersionCode
+                    } else {
+                        @Suppress("DEPRECATION")
+                        packageInfo.versionCode.toLong()
+                    })
+                }
                 "canInstallPackages" -> result.success(
                     Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
                         packageManager.canRequestPackageInstalls()
