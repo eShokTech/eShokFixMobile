@@ -511,10 +511,11 @@ class _SettingsPageState extends State<SettingsPage> {
               ));
               return;
             }
+            final messenger = ScaffoldMessenger.of(context);
             await widget.store.saveSetting('pos.accept_usd_cash', acceptUsdCash ? '1' : '0');
             await widget.store.saveSetting('pos.usd_exchange_rate', rate?.toStringAsFixed(4) ?? '');
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            messenger.showSnackBar(const SnackBar(
               content: Text('Moneda y tipo de cambio guardados.'),
             ));
           } : null,
