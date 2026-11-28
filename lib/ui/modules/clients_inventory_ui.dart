@@ -75,6 +75,7 @@ class _ClientsPageState extends State<ClientsPage> {
                           ),
                         );
                         if (confirmed != true) return;
+                        final messenger = ScaffoldMessenger.of(context);
                         try {
                           await widget.store.deleteClient(c['id'] as int);
                           if (!mounted) return;
@@ -84,7 +85,7 @@ class _ClientsPageState extends State<ClientsPage> {
                           });
                         } catch (error) {
                           if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+                          messenger.showSnackBar(SnackBar(content: Text('$error')));
                         }
                       },
                       icon: const Icon(Icons.delete_outline),
