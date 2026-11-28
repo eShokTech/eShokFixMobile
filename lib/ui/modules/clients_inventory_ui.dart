@@ -454,10 +454,14 @@ class InventoryPriceHistoryDialog extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
           final rows = snapshot.data!;
-          if (rows.isEmpty) return const Center(child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Text('Este artículo todavía no tiene cambios de precio registrados.'),
-          ));
+          if (rows.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Este artículo todavía no tiene cambios de precio registrados.'),
+              ),
+            );
+          }
           return ListView.separated(
             padding: const EdgeInsets.all(16),
             itemCount: rows.length,
