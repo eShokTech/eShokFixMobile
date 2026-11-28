@@ -1789,10 +1789,12 @@ class _ScannedProductCounter {
   const _ScannedProductCounter({
     required this.name,
     required this.quantity,
+    required this.code,
   });
 
   final String name;
   final int quantity;
+  final String code;
 }
 
 class BarcodeScannerPage extends StatefulWidget {
@@ -1867,6 +1869,12 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
     unawaited(_processContinuousCode(value));
   }
 
+  Future<void> _addOneMore(String code) async {
+    if (_processing || _finished) return;
+    setState(() => _processing = true);
+    await _processContinuousCode(code);
+  }
+
   Future<void> _processContinuousCode(String code) async {
     try {
       final result = await widget.onContinuousScan!(code);
@@ -1876,6 +1884,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
         _scannedProducts[result.itemId] = _ScannedProductCounter(
           name: result.name,
           quantity: previous + 1,
+          code: code,
         );
         _feedbackTitle = result.addedNew
             ? 'Producto agregado correctamente'
@@ -1975,6 +1984,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
                                 child: _ScanProductBubble(
                                   name: item.name,
                                   quantity: item.quantity,
+                                  onTap: _processing ? null : () => _addOneMore(item.code),
                                 ),
                               );
                             }).toList(),
@@ -2070,101 +2080,73 @@ class _ScanProductBubble extends StatelessWidget {
   const _ScanProductBubble({
     required this.name,
     required this.quantity,
+    required this.onTap,
   });
 
   final String name;
   final int quantity;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-    message: name,
-    child: SizedBox(
-      width: 84,
-      height: 84,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Container(
-            width: 76,
-            height: 76,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFFB994ED), width: 1.4),
+  Widget build(BuildContext context) => SizedBox(
+    width: 92,
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          child: InkWell(
+            onTap: onTap,
+            customBorder: const CircleBorder(),
+            child: Ink(
+              width: 62,
+              height: 62,
+              decoration: BoxDecoration(
+                color: eShokPurple,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2.5),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 7, offset: Offset(0, 3)),
+                ],
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Text(
+                    quantity.toString(),
+                    style: const TextStyle(color: Colors.white, fontSize: 23, fontWeight: FontWeight.w900),
+                  ),
+                  Positioned(
+                    right: 2,
+                    bottom: 2,
+                    child: Container(
+                      width: 21,
+                      height: 21,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: eShokPurple, width: 1.5),
+                      ),
+                      child: const Icon(Icons.add, color: eShokPurple, size: 15),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-          CustomPaint(
-            size: const Size(84, 84),
-            painter: _ScanProductRingPainter(name),
-          ),
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: eShokPurple,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
-              boxShadow: const [
-                BoxShadow(color: Colors.black26, blurRadius: 5, offset: Offset(0, 2)),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: Text(quantity.toString(),
-              style: const TextStyle(color: Colors.white, fontSize: 21, fontWeight: FontWeight.w900)),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-class _ScanProductRingPainter extends CustomPainter {
-  const _ScanProductRingPainter(this.name);
-
-  final String name;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width * .43;
-    final letters = name.toUpperCase().runes.map(String.fromCharCode).toList();
-    if (letters.isEmpty) return;
-    final visibleLetters = letters.length > 22
-        ? [...letters.take(21), '…']
-        : letters;
-    final step = (2 * math.pi) / visibleLetters.length;
-
-    for (var index = 0; index < visibleLetters.length; index++) {
-      final angle = -math.pi / 2 + step * index;
-      final painter = TextPainter(
-        text: TextSpan(
-          text: visibleLetters[index],
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 6.5,
-            fontWeight: FontWeight.w900,
           ),
         ),
-        textDirection: ui.TextDirection.ltr,
-      )..layout();
-      final position = Offset(
-        center.dx + math.cos(angle) * radius,
-        center.dy + math.sin(angle) * radius,
-      );
-      canvas.save();
-      canvas.translate(position.dx, position.dy);
-      var rotation = angle + math.pi / 2;
-      if (rotation > math.pi / 2 && rotation < math.pi * 1.5) {
-        rotation += math.pi;
-      }
-      canvas.rotate(rotation);
-      painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
-      canvas.restore();
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ScanProductRingPainter oldDelegate) =>
-      oldDelegate.name != name;
+        const SizedBox(height: 5),
+        Text(
+          name,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: Colors.white, fontSize: 10, height: 1.1, fontWeight: FontWeight.w700),
+        ),
+      ],
+    ),
+  );
 }
 
 Future<void> _printPosTicket(
