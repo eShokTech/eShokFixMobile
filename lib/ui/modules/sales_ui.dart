@@ -535,6 +535,7 @@ class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver
   }
 
   Future<void> _createDraftTicket() async {
+    try {
     await _flushDraftSave();
     final id = DateTime.now().microsecondsSinceEpoch.toString();
     final title = 'Ticket ${_draftTickets.length + 1}';
@@ -553,8 +554,15 @@ class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver
       'updated_at': DateTime.now().toIso8601String(),
     };
     if (!mounted) return;
-    setState(() => _draftTickets.add(row));
+    setState(() => _draftTickets = [..._draftTickets, row]);
     _restoreDraftRow(row);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo crear el ticket: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _switchDraftTicket(String id) async {
@@ -604,7 +612,7 @@ class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver
             .where((client) => (client['is_demo'] as num?)?.toInt() != 1)
             .toList();
         _wholesaleRules = rules;
-        _draftTickets = draftRows;
+        _draftTickets = List<Map<String, Object?>>.of(draftRows);
         _loading = false;
       });
       if (draftRows.isEmpty) {
@@ -909,7 +917,7 @@ class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver
     if (completedTicketId != null) {
       await widget.store.deletePosDraftTicket(completedTicketId);
       if (!mounted) return;
-      _draftTickets.removeWhere((ticket) => _str(ticket['id']) == completedTicketId);
+      _draftTickets = _draftTickets.where((ticket) => _str(ticket['id']) != completedTicketId).toList(growable: true);
     }
     if (!mounted) return;
     setState(() {
