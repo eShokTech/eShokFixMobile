@@ -749,7 +749,7 @@ class _SaleCartPageState extends State<SaleCartPage> with WidgetsBindingObserver
 
   Future<ScanItemFeedback> _addScannedProduct(String code) async {
     final product = await widget.store.inventoryItemByCode(code);
-    if (product == null || (product['is_demo'] as num?)?.toInt() == 1) {
+    if (product == null) {
       throw StateError('No se encontró un producto real con el código $code.');
     }
     final itemId = product['id'] as int;
