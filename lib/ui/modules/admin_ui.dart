@@ -543,10 +543,18 @@ class _WholesaleDiscountSettingsSectionState
               const SizedBox(height: 9),
               DropdownButtonFormField<String>(
                 initialValue: type,
+                isExpanded: true,
+                menuMaxHeight: 220,
                 decoration: const InputDecoration(labelText: 'Tipo de descuento'),
                 items: const [
-                  DropdownMenuItem(value: 'fixed', child: Text('Fijo: restar pesos por unidad')),
-                  DropdownMenuItem(value: 'percentage', child: Text('Porcentaje del precio')),
+                  DropdownMenuItem(
+                    value: 'fixed',
+                    child: Text('Fijo · Restar pesos por unidad', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                  DropdownMenuItem(
+                    value: 'percentage',
+                    child: Text('Porcentaje del precio', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
                 ],
                 onChanged: (value) => setDialogState(() => type = value ?? 'fixed'),
               ),
