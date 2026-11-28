@@ -72,3 +72,42 @@ jobs:
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Configure stable Android signing key
+        id: signing
+        if: github.ref == 'refs/heads/main'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Signing secrets are missing; skipping update release."
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/eshokfix-upload-key.jks
+          cat > android/key.properties <<EOF
+          storePassword=$KEYSTORE_PASSWORD
+          keyPassword=$KEY_PASSWORD
+          keyAlias=$KEY_ALIAS
+          storeFile=eshokfix-upload-key.jks
+          EOF
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed update APK
+        if: steps.signing.outputs.ready == 'true'
+        run: flutter build apk --release --build-number "${GITHUB_RUN_NUMBER}" --dart-define=ESHOKFIX_VERSION="0.2.0+${GITHUB_RUN_NUMBER}"
+
+      - name: Publish in-app update
+        if: steps.signing.outputs.ready == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mobile-${{ github.run_number }}
+          name: eShokFix Mobile ${{ github.run_number }}
+          body: |
+            Version: 0.2.0+${{ github.run_number }}
+            Actualización de eShokFix Mobile.
+          files: build/app/outputs/flutter-apk/app-release.apk
+          make_latest: true

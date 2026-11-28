@@ -397,6 +397,8 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ])),
       const SizedBox(height: 10),
+      const AppUpdateSettingsSection(),
+      const SizedBox(height: 10),
       WholesaleDiscountSettingsSection(store: widget.store),
       const SizedBox(height: 10),
       GlassCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
