@@ -24,28 +24,6 @@ class _InitialAdminPageState extends State<InitialAdminPage> {
   bool _busy = false;
   bool _showPassword = false;
   String? _error;
-  final _biometric = LocalAuthentication();
-  final _secure = const FlutterSecureStorage();
-  bool _biometricReady = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkBiometric();
-  }
-
-  Future<void> _checkBiometric() async {
-    try {
-      final supported = await _biometric.isDeviceSupported();
-      final enrolled = await _biometric.getAvailableBiometrics();
-      final savedUser = await _secure.read(key: 'eshokfix.biometric.username');
-      final savedPin = await _secure.read(key: 'eshokfix.biometric.pin');
-      if (mounted) setState(() => _biometricReady = supported && enrolled.isNotEmpty && savedUser != null && savedPin != null);
-    } catch (_) {
-      if (mounted) setState(() => _biometricReady = false);
-    }
-  }
-
   @override
   void dispose() {
     _username.dispose();
@@ -115,6 +93,27 @@ class _LoginPageState extends State<LoginPage> {
   bool _busy = false;
   bool _showPassword = false;
   String? _error;
+  final _biometric = LocalAuthentication();
+  final _secure = const FlutterSecureStorage();
+  bool _biometricReady = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkBiometric();
+  }
+
+  Future<void> _checkBiometric() async {
+    try {
+      final supported = await _biometric.isDeviceSupported();
+      final enrolled = await _biometric.getAvailableBiometrics();
+      final savedUser = await _secure.read(key: 'eshokfix.biometric.username');
+      final savedPin = await _secure.read(key: 'eshokfix.biometric.pin');
+      if (mounted) setState(() => _biometricReady = supported && enrolled.isNotEmpty && savedUser != null && savedPin != null);
+    } catch (_) {
+      if (mounted) setState(() => _biometricReady = false);
+    }
+  }
 
   @override
   void dispose() {
