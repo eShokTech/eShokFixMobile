@@ -40,6 +40,47 @@ class _UsersPageState extends State<UsersPage> {
     }
   }
 
+  Future<void> _deleteUser(Map<String, Object?> user) async {
+    final protectedAdmin = _num(user['protected_admin']) == 1;
+    if (protectedAdmin || user['id'] == widget.currentUser.id) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar usuario'),
+        content: Text(
+          '¿Eliminar la cuenta @${user['username']}? Esta acción no se puede deshacer. Sus sesiones también se cerrarán.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFB65E69)),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar usuario'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _auth.deleteUser(user['id'] as int);
+      if (mounted) {
+        _refresh();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Usuario eliminado correctamente.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo eliminar el usuario: $error')),
+        );
+      }
+    }
+  }
+
   Future<void> _resetPassword(Map<String, Object?> user) async {
     final controller = TextEditingController();
     final confirm = TextEditingController();
@@ -114,6 +155,12 @@ class _UsersPageState extends State<UsersPage> {
                 onChanged: isCurrentUser ? null : (role) { if (role != null) _changeUser(user, role: role); },
               )),
               IconButton(tooltip: 'Restablecer contraseña', onPressed: isCurrentUser ? null : () => _resetPassword(user), icon: const Icon(Icons.password_outlined, color: eShokPurple)),
+              if (_num(user['protected_admin']) != 1 && !isCurrentUser)
+                IconButton(
+                  tooltip: 'Eliminar usuario',
+                  onPressed: () => _deleteUser(user),
+                  icon: const Icon(Icons.delete_outline, color: Color(0xFFB65E69)),
+                ),
             ]),
             Align(alignment: Alignment.centerLeft, child: Text(
               user['last_login_at'] == null ? 'Sin inicio de sesión registrado' : 'Último acceso: ${_date(user['last_login_at'])}',
